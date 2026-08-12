@@ -430,10 +430,10 @@
       <span>הפעולה בוטלה (Ctrl+Z)</span>
     </div>
 
-    <!-- Firebase 10 SDK Compatibility Scripts -->
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <!-- Firebase 10 SDK Compatibility Scripts (Optional Cloud Sync with Graceful Standalone Fallback for GitHub Pages) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js" onerror="console.warn('Firebase App CDN omitted; running in standalone local mode for GitHub Pages')"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js" onerror="console.warn('Firebase Auth CDN omitted')"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js" onerror="console.warn('Firebase Firestore CDN omitted')"></script>
     <script src="app.js"></script>
 </body>
 </html>

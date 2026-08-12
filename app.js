@@ -2770,6 +2770,9 @@ function updateSyncStatusBadge(status) {
   } else if (status === 'synced') {
     dot.textContent = '🟢';
     text.textContent = 'סנכרון ענן (מחובר)';
+  } else if (status === 'local') {
+    dot.textContent = '💾';
+    text.textContent = 'אחסון מקומי (GitHub Pages)';
   } else if (status === 'offline') {
     dot.textContent = '🟠';
     text.textContent = 'מצב אופליין';
@@ -2795,14 +2798,14 @@ function saveDataToCloud() {
       .then(() => updateSyncStatusBadge('synced'))
       .catch(err => {
         console.warn('Cloud sync error (saved locally):', err);
-        updateSyncStatusBadge('synced');
+        updateSyncStatusBadge('local');
       });
   }, 400);
 }
 
 function subscribeToCloudUpdates() {
   if (!db) {
-    updateSyncStatusBadge('synced');
+    updateSyncStatusBadge('local');
     return;
   }
 
