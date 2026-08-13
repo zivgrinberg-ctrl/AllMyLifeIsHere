@@ -1484,8 +1484,13 @@ function renderCheckboxTableBody(t, container) {
       item.text = textInput.value;
     });
 
-    // Auto-remove empty checkbox row when losing focus
+    textInput.addEventListener('change', () => {
+      saveStateToHistory();
+    });
+
+    // Auto-remove empty checkbox row when losing focus & save state
     textInput.addEventListener('blur', () => {
+      saveStateToHistory();
       if (item.text.trim() === '' && t.items.length > 1) {
         t.items = t.items.filter(i => i.id !== item.id);
         renderCheckboxTableBody(t, container);
