@@ -2781,7 +2781,7 @@ function updateSyncStatusBadge(status) {
 }
 
 function saveDataToCloud() {
-  saveStateToLocalStorage();
+  //saveStateToLocalStorage();
   if (!db || isReceivingCloudUpdate) return;
 
   clearTimeout(cloudSaveTimeout);
