@@ -2507,10 +2507,8 @@ function renderSpecialTableBody(t, container) {
   container.appendChild(body);
 }
 
-// ==========================================
-// USER AUTHENTICATION & MULTI-TENANT CLOUD SYNC (Firebase Firestore)
-// ==========================================
 let db = null;
+let storage = null;
 let currentUser = null;
 let currentSyncKey = null;
 let cloudUnsubscribe = null;
@@ -2560,26 +2558,29 @@ function initCloudSync() {
     }
   }
 
-  // Initialize Firebase Firestore if compat SDK is loaded
+  // Initialize Firebase Firestore & Storage if compat SDK is loaded
   if (typeof firebase !== 'undefined') {
     const firebaseConfig = {
-      apiKey: "AIzaSyD-allmylifeishere-demo-key",
-      authDomain: "allmylifeishere-app.firebaseapp.com",
-      projectId: "allmylifeishere-app",
-      storageBucket: "allmylifeishere-app.appspot.com",
-      messagingSenderId: "987654321012",
-      appId: "1:987654321012:web:abcdef1234567890"
+      apiKey: "AIzaSyCT6Tk884WLgg9Vsr49rVorU3UqfpGwUIs",
+      authDomain: "allmylifeishere.firebaseapp.com",
+      projectId: "allmylifeishere",
+      storageBucket: "allmylifeishere.firebasestorage.app",
+      messagingSenderId: "300520905889",
+      appId: "1:300520905889:web:239c487f5a2d021a1a64e0",
+      measurementId: "G-2NKC6E8M77"
     };
 
     if (!firebase.apps.length) {
       try {
         firebase.initializeApp(firebaseConfig);
         db = firebase.firestore();
+        if (firebase.storage) storage = firebase.storage();
       } catch (err) {
         console.warn('Firebase init warning:', err);
       }
     } else {
       db = firebase.firestore();
+      if (firebase.storage) storage = firebase.storage();
     }
   }
 
