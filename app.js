@@ -2579,12 +2579,22 @@ function initCloudSync() {
       try {
         firebase.initializeApp(firebaseConfig);
         db = firebase.firestore();
+        try {
+          db.settings({ experimentalForceLongPolling: true });
+        } catch (e) {
+          console.warn('Long polling setting notice:', e);
+        }
         if (firebase.storage) storage = firebase.storage();
       } catch (err) {
         console.warn('Firebase init warning:', err);
       }
     } else {
       db = firebase.firestore();
+      try {
+        db.settings({ experimentalForceLongPolling: true });
+      } catch (e) {
+        console.warn('Long polling setting notice:', e);
+      }
       if (firebase.storage) storage = firebase.storage();
     }
   }
