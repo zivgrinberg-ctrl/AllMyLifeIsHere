@@ -2793,7 +2793,13 @@ let cloudUnsubscribe = null;
 let isReceivingCloudUpdate = false;
 let cloudSaveTimeout = null;
 let authMode = 'login'; // 'login' | 'register'
-const myDeviceId = 'dev_' + Math.random().toString(36).substring(2, 9);
+let myDeviceId = localStorage.getItem('allmylifeishere_deviceId');
+if (!myDeviceId) {
+  myDeviceId = 'dev_' + Math.random().toString(36).substring(2, 9);
+  try {
+    localStorage.setItem('allmylifeishere_deviceId', myDeviceId);
+  } catch (e) {}
+}
 
 // Cookie Helpers
 function setCookie(name, value, days = 365) {
@@ -3240,18 +3246,24 @@ function subscribeToCloudUpdates() {
 
     isReceivingCloudUpdate = true;
     if (data.tables && Array.isArray(data.tables)) {
-      if (data.tables.length > 0 || tables.length === 0) {
+      if (data.tables.length > 0) {
         tables = data.tables;
+      } else if (tables.length > 0) {
+        saveDataToCloud();
       }
     }
     if (data.events && Array.isArray(data.events)) {
-      if (data.events.length > 0 || events.length === 0) {
+      if (data.events.length > 0) {
         events = data.events;
+      } else if (events.length > 0) {
+        saveDataToCloud();
       }
     }
     if (data.deletedTables && Array.isArray(data.deletedTables)) {
-      if (data.deletedTables.length > 0 || deletedTables.length === 0) {
+      if (data.deletedTables.length > 0) {
         deletedTables = data.deletedTables;
+      } else if (deletedTables.length > 0) {
+        saveDataToCloud();
       }
     }
     if (data.completedTasksHistory && typeof completedTasksHistory !== 'undefined') {
