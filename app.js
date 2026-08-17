@@ -2923,6 +2923,9 @@ function initCloudSync() {
       } catch (e) {
         console.warn('Long polling setting notice:', e);
       }
+      if (firebase.storage) storage = firebase.storage();
+    }
+
     if (firebase.auth) {
       try {
         if (!firebase.auth().currentUser && !currentUser) {
