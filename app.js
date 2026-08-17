@@ -937,6 +937,7 @@ function handleTableFormSubmit(e) {
     newTableCreatedId = newTable.id;
   }
 
+  saveStateToHistory();
   renderFilteredTables();
   closeTableModal();
 
@@ -1042,6 +1043,7 @@ function getWeeklyArchiveData(t) {
     set(target, prop, value) {
       if (['items', 'images', 'activeImageIndex', 'imageData', 'canvasData', 'specialType', 'content', 'gridData', 'headers'].includes(prop)) {
         activeWeekData[prop] = value;
+        target[prop] = value;
         return true;
       }
       target[prop] = value;
@@ -1823,15 +1825,19 @@ function renderCustomGridTableBody(t, container) {
       const input = document.createElement('input');
       input.type = 'text';
       input.value = cellVal || '';
-      input.placeholder = rIdx === 0 ? `כותרת ${cIdx + 1}` : '';
+      input.placeholder = '';
       input.addEventListener('input', () => {
         if (!t.gridData[rIdx]) t.gridData[rIdx] = [];
         t.gridData[rIdx][cIdx] = input.value;
+        t.gridData = JSON.parse(JSON.stringify(t.gridData));
+        saveStateToHistory();
       });
       input.addEventListener('change', () => {
+        t.gridData = JSON.parse(JSON.stringify(t.gridData));
         saveStateToHistory();
       });
       input.addEventListener('blur', () => {
+        t.gridData = JSON.parse(JSON.stringify(t.gridData));
         saveStateToHistory();
       });
       td.appendChild(input);
