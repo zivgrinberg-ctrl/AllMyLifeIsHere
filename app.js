@@ -2950,12 +2950,15 @@ function initCloudSync() {
 function updateUserProfileUI() {
   const profileBadge = document.getElementById('userProfileBadge');
   const userNameDisplay = document.getElementById('userNameDisplay');
+  const loginNavBtn = document.getElementById('loginNavBtn');
 
   if (currentUser) {
     if (userNameDisplay) userNameDisplay.textContent = currentUser.name || currentUser.email.split('@')[0];
     if (profileBadge) profileBadge.classList.remove('hidden');
+    if (loginNavBtn) loginNavBtn.classList.add('hidden');
   } else {
     if (profileBadge) profileBadge.classList.add('hidden');
+    if (loginNavBtn) loginNavBtn.classList.remove('hidden');
   }
 }
 
@@ -2986,6 +2989,22 @@ function setupAuthListeners() {
   const authPasswordInput = document.getElementById('authPasswordInput');
   const authSubmitBtn = document.getElementById('authSubmitBtn');
   const logoutBtn = document.getElementById('logoutBtn');
+  const loginNavBtn = document.getElementById('loginNavBtn');
+  const closeAuthModalBtn = document.getElementById('closeAuthModalBtn');
+
+  if (loginNavBtn) {
+    loginNavBtn.addEventListener('click', openAuthModal);
+  }
+
+  if (closeAuthModalBtn) {
+    closeAuthModalBtn.addEventListener('click', closeAuthModal);
+  }
+
+  if (authModal) {
+    authModal.addEventListener('click', (e) => {
+      if (e.target === authModal) closeAuthModal();
+    });
+  }
 
   if (authTabLogin) {
     authTabLogin.addEventListener('click', () => {
@@ -3095,13 +3114,8 @@ function setupAuthListeners() {
         localStorage.removeItem('allmylifeishere_user');
         deleteCookie('allmylifeishere_user');
 
-        tables = [];
-        events = [];
         updateUserProfileUI();
-        renderHeaderDays();
-        renderGridRows();
-        renderFilteredTables();
-        if (cloudUnsubscribe) cloudUnsubscribe();
+        subscribeToCloudUpdates();
         openAuthModal();
         showToast('🚪 התנתקת בהצלחה מהחשבון');
       }
