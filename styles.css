@@ -1621,29 +1621,15 @@ body {
   font-size: 0.85rem;
 }
 
-.rendered-custom-grid th {
-  border: 1px solid var(--border-color);
-  padding: 0.5rem;
-  background: rgba(99, 102, 241, 0.18);
-  border-bottom: 2px solid var(--accent-primary);
-}
-
 .rendered-custom-grid td {
   border: 1px solid var(--border-color);
   padding: 0.5rem;
   background: var(--bg-surface);
 }
 
-.rendered-custom-grid th input {
-  width: 100%;
-  background: transparent;
-  border: none;
-  color: #a5b4fc;
-  font-family: var(--font-family);
-  font-size: 0.92rem;
-  font-weight: 700;
-  text-align: center;
-  outline: none;
+.rendered-custom-grid tr.grid-top-row td {
+  background: rgba(99, 102, 241, 0.18) !important;
+  border-bottom: 2px solid var(--accent-primary) !important;
 }
 
 .rendered-custom-grid td input {
@@ -1654,6 +1640,13 @@ body {
   font-family: var(--font-family);
   font-size: 0.85rem;
   outline: none;
+}
+
+.rendered-custom-grid tr.grid-top-row td input {
+  font-weight: 700 !important;
+  color: #a5b4fc !important;
+  font-size: 0.92rem !important;
+  text-align: center;
 }
 
 /* Table Type 3: Free Text Table */

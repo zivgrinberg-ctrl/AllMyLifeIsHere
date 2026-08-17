@@ -1797,11 +1797,9 @@ function renderCheckboxTableBody(t, container) {
 function renderCustomGridTableBody(t, container) {
   container.innerHTML = '';
 
-  if (!t.headers || !Array.isArray(t.headers) || t.headers.length === 0) {
-    t.headers = ['עמודה 1', 'עמודה 2', 'עמודה 3'];
-  }
-  if (!t.gridData || !Array.isArray(t.gridData)) {
+  if (!t.gridData || !Array.isArray(t.gridData) || t.gridData.length === 0) {
     t.gridData = [
+      ['', '', ''],
       ['', '', ''],
       ['', '', '']
     ];
@@ -1813,40 +1811,19 @@ function renderCustomGridTableBody(t, container) {
   const tableEl = document.createElement('table');
   tableEl.className = 'rendered-custom-grid';
 
-  // Headers Row
-  const thead = document.createElement('thead');
-  const trHead = document.createElement('tr');
-  t.headers.forEach((hText, cIdx) => {
-    const th = document.createElement('th');
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.value = hText;
-    input.placeholder = `עמודה ${cIdx + 1}`;
-    input.addEventListener('input', () => {
-      t.headers[cIdx] = input.value;
-    });
-    input.addEventListener('change', () => {
-      saveStateToHistory();
-    });
-    input.addEventListener('blur', () => {
-      saveStateToHistory();
-    });
-    th.appendChild(input);
-    trHead.appendChild(th);
-  });
-  thead.appendChild(trHead);
-  tableEl.appendChild(thead);
-
-  // Data Rows
   const tbody = document.createElement('tbody');
   t.gridData.forEach((rowArray, rIdx) => {
     const tr = document.createElement('tr');
-    while (rowArray.length < t.headers.length) rowArray.push('');
+    if (rIdx === 0) {
+      tr.className = 'grid-top-row';
+    }
+
     rowArray.forEach((cellVal, cIdx) => {
       const td = document.createElement('td');
       const input = document.createElement('input');
       input.type = 'text';
       input.value = cellVal || '';
+      input.placeholder = rIdx === 0 ? `כותרת ${cIdx + 1}` : '';
       input.addEventListener('input', () => {
         if (!t.gridData[rIdx]) t.gridData[rIdx] = [];
         t.gridData[rIdx][cIdx] = input.value;
@@ -1879,7 +1856,8 @@ function renderCustomGridTableBody(t, container) {
   addRowBtn.textContent = '➕ הוסף שורה';
   addRowBtn.addEventListener('click', () => {
     saveStateToHistory();
-    const newRow = new Array(t.headers.length).fill('');
+    const colsCount = (t.gridData[0] && t.gridData[0].length) ? t.gridData[0].length : 3;
+    const newRow = new Array(colsCount).fill('');
     t.gridData.push(newRow);
     renderCustomGridTableBody(t, container);
   });
@@ -1903,7 +1881,6 @@ function renderCustomGridTableBody(t, container) {
   addColBtn.textContent = '➕ הוסף עמודה';
   addColBtn.addEventListener('click', () => {
     saveStateToHistory();
-    t.headers.push(`עמודה ${t.headers.length + 1}`);
     t.gridData.forEach(r => r.push(''));
     renderCustomGridTableBody(t, container);
   });
@@ -1912,11 +1889,11 @@ function renderCustomGridTableBody(t, container) {
   delColBtn.type = 'button';
   delColBtn.className = 'btn btn-sm btn-secondary';
   delColBtn.textContent = '➖ מחק עמודה';
-  if (t.headers.length <= 1) delColBtn.disabled = true;
+  const firstRowCols = t.gridData[0] ? t.gridData[0].length : 0;
+  if (firstRowCols <= 1) delColBtn.disabled = true;
   delColBtn.addEventListener('click', () => {
-    if (t.headers.length > 1) {
+    if (t.gridData[0] && t.gridData[0].length > 1) {
       saveStateToHistory();
-      t.headers.pop();
       t.gridData.forEach(r => r.pop());
       renderCustomGridTableBody(t, container);
     }
