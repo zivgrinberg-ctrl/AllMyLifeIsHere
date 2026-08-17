@@ -2874,7 +2874,12 @@ function initCloudSync() {
       } catch (e) {
         console.warn('Long polling setting notice:', e);
       }
-      if (firebase.storage) storage = firebase.storage();
+    if (firebase.auth) {
+      try {
+        if (!firebase.auth().currentUser && !currentUser) {
+          firebase.auth().signInAnonymously().catch(e => console.warn('Anon auth notice:', e));
+        }
+      } catch (e) {}
     }
   }
 
@@ -2884,10 +2889,10 @@ function initCloudSync() {
 
   if (currentUser) {
     updateUserProfileUI();
-    subscribeToCloudUpdates();
-  } else {
-    openAuthModal();
   }
+
+  // ALWAYS subscribe to cloud updates for 100% sync reliability on GitHub Pages
+  subscribeToCloudUpdates();
 }
 
 function updateUserProfileUI() {
