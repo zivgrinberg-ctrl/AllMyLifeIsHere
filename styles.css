@@ -1632,6 +1632,40 @@ body {
   border-bottom: 2px solid var(--accent-primary) !important;
 }
 
+.rendered-custom-grid td.grid-row-actions-td {
+  width: 95px;
+  min-width: 95px;
+  max-width: 95px;
+  white-space: nowrap;
+  text-align: center;
+  background: rgba(15, 23, 42, 0.5);
+  border-right: 1px solid var(--border-color);
+  padding: 0.15rem 0.25rem;
+  vertical-align: middle;
+}
+
+.rendered-custom-grid tr.grid-row-selected {
+  background: rgba(99, 102, 241, 0.25) !important;
+  box-shadow: inset 0 0 0 1px var(--accent-primary);
+}
+
+.grid-row-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0.15rem;
+  font-size: 0.8rem;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  opacity: 0.75;
+}
+
+.grid-row-btn:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.15);
+  transform: scale(1.15);
+}
+
 .rendered-custom-grid td input,
 .rendered-custom-grid td textarea,
 .grid-cell-textarea {

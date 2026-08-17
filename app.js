@@ -922,6 +922,13 @@ function handleTableFormSubmit(e) {
           });
 
           updated.gridData = currentGrid;
+          if (updated.weeklyData) {
+            const targetWeekDate = (typeof currentWeekStart !== 'undefined' && currentWeekStart) ? currentWeekStart : new Date();
+            const wKey = formatDateISO(getSunday(targetWeekDate));
+            if (updated.weeklyData[wKey]) {
+              updated.weeklyData[wKey].gridData = JSON.parse(JSON.stringify(currentGrid));
+            }
+          }
         }
 
         return updated;
@@ -1825,6 +1832,22 @@ function renderCheckboxTableBody(t, container) {
 }
 
 // Render Type 2: Custom Grid Table (Columns & Rows Matrix)
+function syncCustomGridData(t) {
+  const rootT = tables.find(tbl => tbl.id === t.id);
+  if (rootT) {
+    rootT.gridData = JSON.parse(JSON.stringify(t.gridData));
+    if (rootT.weeklyData) {
+      const targetWeekDate = (typeof currentWeekStart !== 'undefined' && currentWeekStart) ? currentWeekStart : new Date();
+      const wKey = formatDateISO(getSunday(targetWeekDate));
+      if (rootT.weeklyData[wKey]) {
+        rootT.weeklyData[wKey].gridData = JSON.parse(JSON.stringify(t.gridData));
+      }
+    }
+  }
+  t.gridData = JSON.parse(JSON.stringify(t.gridData));
+  saveStateToHistory();
+}
+
 function renderCustomGridTableBody(t, container) {
   container.innerHTML = '';
 
@@ -1849,6 +1872,86 @@ function renderCustomGridTableBody(t, container) {
       tr.className = 'grid-top-row';
     }
 
+    // Row Control Buttons Cell (🎯 Select, ⬆️ Move Up, ⬇️ Move Down, 🗑️ Delete)
+    const actionsTd = document.createElement('td');
+    actionsTd.className = 'grid-row-actions-td';
+
+    // 1. Select & Highlight Row Button (🎯)
+    const selectBtn = document.createElement('button');
+    selectBtn.type = 'button';
+    selectBtn.className = 'grid-row-btn';
+    selectBtn.title = 'סימון שורה זו והעתקת כל תאיה ללוח';
+    selectBtn.textContent = '🎯';
+    selectBtn.addEventListener('click', () => {
+      const allRows = tbody.querySelectorAll('tr');
+      allRows.forEach(r => r.classList.remove('grid-row-selected'));
+      tr.classList.add('grid-row-selected');
+
+      const rowText = rowArray.join('\t');
+      navigator.clipboard.writeText(rowText).then(() => {
+        showToast(`🎯 השורה סומנה והועתקה ללוח!`);
+      }).catch(() => {
+        showToast(`🎯 השורה סומנה`);
+      });
+    });
+
+    // 2. Move Row Up (⬆️)
+    const moveUpBtn = document.createElement('button');
+    moveUpBtn.type = 'button';
+    moveUpBtn.className = 'grid-row-btn';
+    moveUpBtn.title = 'הזז שורה למעלה';
+    moveUpBtn.textContent = '⬆️';
+    if (rIdx === 0) moveUpBtn.disabled = true;
+    moveUpBtn.addEventListener('click', () => {
+      if (rIdx > 0) {
+        saveStateToHistory();
+        const moved = t.gridData.splice(rIdx, 1)[0];
+        t.gridData.splice(rIdx - 1, 0, moved);
+        t.gridData = JSON.parse(JSON.stringify(t.gridData));
+        renderFilteredTables();
+      }
+    });
+
+    // 3. Move Row Down (⬇️)
+    const moveDownBtn = document.createElement('button');
+    moveDownBtn.type = 'button';
+    moveDownBtn.className = 'grid-row-btn';
+    moveDownBtn.title = 'הזז שורה למטה';
+    moveDownBtn.textContent = '⬇️';
+    if (rIdx === t.gridData.length - 1) moveDownBtn.disabled = true;
+    moveDownBtn.addEventListener('click', () => {
+      if (rIdx < t.gridData.length - 1) {
+        saveStateToHistory();
+        const moved = t.gridData.splice(rIdx, 1)[0];
+        t.gridData.splice(rIdx + 1, 0, moved);
+        t.gridData = JSON.parse(JSON.stringify(t.gridData));
+        renderFilteredTables();
+      }
+    });
+
+    // 4. Delete Row (🗑️)
+    const deleteRowBtn = document.createElement('button');
+    deleteRowBtn.type = 'button';
+    deleteRowBtn.className = 'grid-row-btn';
+    deleteRowBtn.title = 'מחק שורה זו';
+    deleteRowBtn.textContent = '🗑️';
+    deleteRowBtn.addEventListener('click', () => {
+      if (t.gridData.length <= 1) {
+        alert('לא ניתן למחוק את השורה האחרונה בטבלה!');
+        return;
+      }
+      saveStateToHistory();
+      t.gridData.splice(rIdx, 1);
+      t.gridData = JSON.parse(JSON.stringify(t.gridData));
+      renderFilteredTables();
+    });
+
+    actionsTd.appendChild(selectBtn);
+    actionsTd.appendChild(moveUpBtn);
+    actionsTd.appendChild(moveDownBtn);
+    actionsTd.appendChild(deleteRowBtn);
+    tr.appendChild(actionsTd);
+
     rowArray.forEach((cellVal, cIdx) => {
       const td = document.createElement('td');
       const textarea = document.createElement('textarea');
@@ -1866,27 +1969,110 @@ function renderCustomGridTableBody(t, container) {
         adjustHeight();
         if (!t.gridData[rIdx]) t.gridData[rIdx] = [];
         t.gridData[rIdx][cIdx] = textarea.value;
-        t.gridData = JSON.parse(JSON.stringify(t.gridData));
-        saveStateToHistory();
+        syncCustomGridData(t);
+      });
+
+      // Smart multi-cell clipboard paste
+      textarea.addEventListener('paste', (e) => {
+        const pasteData = (e.clipboardData || window.clipboardData).getData('text');
+        if (pasteData && (pasteData.includes('\t') || pasteData.includes('\n'))) {
+          e.preventDefault();
+          const values = pasteData.replace(/\r/g, '').split('\t');
+          if (values.length > 1) {
+            values.forEach((val, idx) => {
+              const targetCol = cIdx + idx;
+              if (targetCol < rowArray.length) {
+                t.gridData[rIdx][targetCol] = val;
+              }
+            });
+            syncCustomGridData(t);
+            renderFilteredTables();
+            showToast('📋 השורה הודבקה בהצלחה!');
+          } else {
+            textarea.value = pasteData;
+            t.gridData[rIdx][cIdx] = pasteData;
+            syncCustomGridData(t);
+            adjustHeight();
+          }
+        }
       });
 
       textarea.addEventListener('change', () => {
-        t.gridData = JSON.parse(JSON.stringify(t.gridData));
-        saveStateToHistory();
+        syncCustomGridData(t);
       });
 
       textarea.addEventListener('blur', () => {
-        t.gridData = JSON.parse(JSON.stringify(t.gridData));
-        saveStateToHistory();
+        syncCustomGridData(t);
       });
 
       textarea.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           if (!e.shiftKey) {
             e.preventDefault();
-            textarea.blur();
+            const nextRowTr = tbody.children[rIdx + 1];
+            if (nextRowTr) {
+              const nextTd = nextRowTr.children[cIdx + 1];
+              if (nextTd) {
+                const nextTa = nextTd.querySelector('textarea');
+                if (nextTa) nextTa.focus();
+              }
+            } else {
+              textarea.blur();
+            }
           } else {
             setTimeout(adjustHeight, 0);
+          }
+        } else if (e.key === 'ArrowDown') {
+          const isAtBottom = textarea.selectionStart === textarea.value.length || !textarea.value.includes('\n');
+          if (isAtBottom) {
+            const nextRowTr = tbody.children[rIdx + 1];
+            if (nextRowTr) {
+              const nextTd = nextRowTr.children[cIdx + 1];
+              if (nextTd) {
+                const nextTa = nextTd.querySelector('textarea');
+                if (nextTa) {
+                  e.preventDefault();
+                  nextTa.focus();
+                }
+              }
+            }
+          }
+        } else if (e.key === 'ArrowUp') {
+          const isAtTop = textarea.selectionStart === 0 || !textarea.value.includes('\n');
+          if (isAtTop) {
+            const prevRowTr = tbody.children[rIdx - 1];
+            if (prevRowTr) {
+              const prevTd = prevRowTr.children[cIdx + 1];
+              if (prevTd) {
+                const prevTa = prevTd.querySelector('textarea');
+                if (prevTa) {
+                  e.preventDefault();
+                  prevTa.focus();
+                }
+              }
+            }
+          }
+        } else if (e.key === 'ArrowLeft') {
+          if (textarea.selectionStart === textarea.value.length) {
+            const nextTd = tr.children[cIdx + 2];
+            if (nextTd) {
+              const nextTa = nextTd.querySelector('textarea');
+              if (nextTa) {
+                e.preventDefault();
+                nextTa.focus();
+              }
+            }
+          }
+        } else if (e.key === 'ArrowRight') {
+          if (textarea.selectionStart === 0) {
+            const prevTd = tr.children[cIdx];
+            if (prevTd) {
+              const prevTa = prevTd.querySelector('textarea');
+              if (prevTa) {
+                e.preventDefault();
+                prevTa.focus();
+              }
+            }
           }
         }
       });
