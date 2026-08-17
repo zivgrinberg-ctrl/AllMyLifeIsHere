@@ -892,7 +892,7 @@ function handleTableFormSubmit(e) {
     // Update existing table
     tables = tables.map(t => {
       if (t.id === editingTableId) {
-        return {
+        const updated = {
           ...t,
           title,
           resetFrequency,
@@ -900,6 +900,31 @@ function handleTableFormSubmit(e) {
           isToday,
           isCompact
         };
+
+        if (t.type === 'customGrid') {
+          const targetRows = parseInt(gridRowsInput.value) || (t.gridData ? t.gridData.length : 3);
+          const targetCols = parseInt(gridColsInput.value) || (t.gridData && t.gridData[0] ? t.gridData[0].length : 3);
+          updated.rowsCount = targetRows;
+          updated.colsCount = targetCols;
+
+          let currentGrid = t.gridData ? JSON.parse(JSON.stringify(t.gridData)) : [];
+          while (currentGrid.length < targetRows) {
+            const colsLen = (currentGrid[0] && currentGrid[0].length) ? currentGrid[0].length : targetCols;
+            currentGrid.push(new Array(colsLen).fill(''));
+          }
+          if (currentGrid.length > targetRows) {
+            currentGrid = currentGrid.slice(0, targetRows);
+          }
+
+          currentGrid.forEach(row => {
+            while (row.length < targetCols) row.push('');
+            if (row.length > targetCols) row.splice(targetCols);
+          });
+
+          updated.gridData = currentGrid;
+        }
+
+        return updated;
       }
       return t;
     });
@@ -936,7 +961,8 @@ function handleTableFormSubmit(e) {
       newTable.canvasData = null;
     }
 
-    tables.push(newTable);
+    // Place new table at the VERY TOP of the list
+    tables.unshift(newTable);
     newTableCreatedId = newTable.id;
   }
 
@@ -1825,26 +1851,49 @@ function renderCustomGridTableBody(t, container) {
 
     rowArray.forEach((cellVal, cIdx) => {
       const td = document.createElement('td');
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.value = cellVal || '';
-      input.placeholder = '';
-      input.addEventListener('input', () => {
+      const textarea = document.createElement('textarea');
+      textarea.value = cellVal || '';
+      textarea.placeholder = '';
+      textarea.rows = 1;
+      textarea.className = 'grid-cell-textarea';
+
+      const adjustHeight = () => {
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.max(28, textarea.scrollHeight) + 'px';
+      };
+
+      textarea.addEventListener('input', () => {
+        adjustHeight();
         if (!t.gridData[rIdx]) t.gridData[rIdx] = [];
-        t.gridData[rIdx][cIdx] = input.value;
+        t.gridData[rIdx][cIdx] = textarea.value;
         t.gridData = JSON.parse(JSON.stringify(t.gridData));
         saveStateToHistory();
       });
-      input.addEventListener('change', () => {
+
+      textarea.addEventListener('change', () => {
         t.gridData = JSON.parse(JSON.stringify(t.gridData));
         saveStateToHistory();
       });
-      input.addEventListener('blur', () => {
+
+      textarea.addEventListener('blur', () => {
         t.gridData = JSON.parse(JSON.stringify(t.gridData));
         saveStateToHistory();
       });
-      td.appendChild(input);
+
+      textarea.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          if (!e.shiftKey) {
+            e.preventDefault();
+            textarea.blur();
+          } else {
+            setTimeout(adjustHeight, 0);
+          }
+        }
+      });
+
+      td.appendChild(textarea);
       tr.appendChild(td);
+      setTimeout(adjustHeight, 0);
     });
     tbody.appendChild(tr);
   });
