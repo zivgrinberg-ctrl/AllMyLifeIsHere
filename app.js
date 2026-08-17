@@ -28,6 +28,9 @@ function saveStateToHistory() {
   // Clear redo stack on new action
   redoStack = [];
 
+  // ALWAYS Save Backup to LocalStorage
+  saveStateToLocalStorage();
+
   // Trigger Real-Time Cloud Sync
   if (typeof saveDataToCloud === 'function') {
     saveDataToCloud();
