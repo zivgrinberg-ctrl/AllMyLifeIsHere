@@ -32,6 +32,14 @@ function saveStateToHistory() {
   }
 }
 
+function saveStateToLocalStorage() {
+  try {
+    localStorage.setItem('allmylifeishere_board_backup', JSON.stringify({ tables, events }));
+  } catch (e) {
+    console.warn('LocalStorage save backup notice:', e);
+  }
+}
+
 function undoLastAction() {
   if (historyStack.length === 0) return;
 
@@ -2796,7 +2804,7 @@ function updateSyncStatusBadge(status) {
 }
 
 function saveDataToCloud() {
-  //saveStateToLocalStorage();
+  saveStateToLocalStorage();
   if (!db || isReceivingCloudUpdate) return;
 
   clearTimeout(cloudSaveTimeout);
