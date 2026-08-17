@@ -424,6 +424,31 @@
       </div>
     </div>
 
+    <!-- Table Sharing Modal (👥 שיתוף טבלה) -->
+    <div id="shareModal" class="modal-backdrop hidden" aria-hidden="true" style="z-index: 100000;">
+      <div class="modal-dialog share-modal-dialog" style="max-width: 440px; background: #0f172a; border: 1px solid var(--accent-primary); box-shadow: 0 0 40px rgba(99, 102, 241, 0.4);">
+        <div class="modal-header">
+          <h2 id="shareModalTitle" style="font-family: 'Outfit', 'Rubik', sans-serif; font-size: 1.3rem; margin: 0;">👥 שיתוף טבלה</h2>
+          <button type="button" id="closeShareModalBtn" class="modal-close-btn">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.25rem;">
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
+            הזן את כתובת האימייל של החבר או השותף כדי לשתף איתו טבלה זו בזמן אמת:
+          </p>
+
+          <form id="shareUserForm" style="display:flex; gap:0.5rem; margin-bottom: 1.25rem;">
+            <input type="email" id="shareEmailInput" class="form-input" placeholder="partner@gmail.com" style="flex:1;" required>
+            <button type="submit" class="btn btn-primary" style="white-space:nowrap;">➕ הוסף שותף</button>
+          </form>
+
+          <h4 style="font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--text-primary);">👥 שותפים בטבלה זו:</h4>
+          <div id="sharedUsersList" class="shared-users-list" style="display:flex; flex-direction:column; gap:0.4rem; max-height: 180px; overflow-y: auto;">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Undo Toast Notification -->
     <div id="undoToast" class="undo-toast">
       <span>↩️</span>

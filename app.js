@@ -2,6 +2,7 @@
 let currentWeekStart = getSunday(new Date());
 let events = []; // STRICT: Empty initial state with zero dummy data
 let tables = []; // STRICT: Empty initial state for tables
+let deletedTables = []; // Deleted Tables Archive
 let editingEventId = null;
 let editingTableId = null;
 let currentTab = 'all'; // Single active tab: 'all' | 'today' | 'life' | 'work' | 'fun'
@@ -14,7 +15,8 @@ const MAX_HISTORY_STEPS = 50;
 function saveStateToHistory() {
   const snapshot = JSON.stringify({
     tables: tables,
-    events: events
+    events: events,
+    deletedTables: deletedTables
   });
   if (historyStack.length > 0 && historyStack[historyStack.length - 1] === snapshot) {
     return;
@@ -34,9 +36,31 @@ function saveStateToHistory() {
 
 function saveStateToLocalStorage() {
   try {
-    localStorage.setItem('allmylifeishere_board_backup', JSON.stringify({ tables, events }));
+    localStorage.setItem('allmylifeishere_board_backup', JSON.stringify({ tables, events, deletedTables }));
   } catch (e) {
     console.warn('LocalStorage save backup notice:', e);
+  }
+}
+
+function loadBackupFromLocalStorage() {
+  try {
+    const backupStr = localStorage.getItem('allmylifeishere_board_backup');
+    if (backupStr) {
+      const backup = JSON.parse(backupStr);
+      if (backup) {
+        if (backup.tables && Array.isArray(backup.tables) && backup.tables.length > 0) {
+          if (tables.length === 0) tables = backup.tables;
+        }
+        if (backup.events && Array.isArray(backup.events) && backup.events.length > 0) {
+          if (events.length === 0) events = backup.events;
+        }
+        if (backup.deletedTables && Array.isArray(backup.deletedTables) && backup.deletedTables.length > 0) {
+          if (deletedTables.length === 0) deletedTables = backup.deletedTables;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('LocalStorage backup load notice:', e);
   }
 }
 
@@ -45,7 +69,8 @@ function undoLastAction() {
 
   const currentStateSnapshot = JSON.stringify({
     tables: tables,
-    events: events
+    events: events,
+    deletedTables: deletedTables
   });
   redoStack.push(currentStateSnapshot);
 
@@ -54,6 +79,7 @@ function undoLastAction() {
     const state = JSON.parse(previousStateJSON);
     tables = state.tables || [];
     events = state.events || [];
+    deletedTables = state.deletedTables || [];
 
     renderGridRows();
     renderFilteredTables();
@@ -68,7 +94,8 @@ function redoLastAction() {
 
   const currentStateSnapshot = JSON.stringify({
     tables: tables,
-    events: events
+    events: events,
+    deletedTables: deletedTables
   });
   historyStack.push(currentStateSnapshot);
 
@@ -77,6 +104,7 @@ function redoLastAction() {
     const state = JSON.parse(nextStateJSON);
     tables = state.tables || [];
     events = state.events || [];
+    deletedTables = state.deletedTables || [];
 
     renderGridRows();
     renderFilteredTables();
@@ -227,6 +255,7 @@ const SLOT_HEIGHT = 54;    // 54px per hour slot
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+  loadBackupFromLocalStorage();
   populateDateDropdowns();
   populateTimeDropdowns();
   renderHeaderDays();
@@ -950,9 +979,17 @@ function checkAndResetTables() {
 
     if (shouldReset) {
       if (t.items) {
-        t.items.forEach(item => item.checked = false);
+        t.items.forEach(item => {
+          item.checked = false;
+          item.completedAtISO = null;
+          item.completedAtDate = null;
+          item.completedAtTime = null;
+        });
       }
       t.lastResetDate = todayISO;
+      if (typeof saveDataToCloud === 'function') {
+        saveDataToCloud();
+      }
     }
   });
 }
@@ -989,20 +1026,21 @@ function getWeeklyArchiveData(t) {
       canvasData: t.canvasData || null,
       specialType: t.specialType || 'image',
       content: t.content || '',
-      gridData: t.gridData ? JSON.parse(JSON.stringify(t.gridData)) : null
+      headers: t.headers ? JSON.parse(JSON.stringify(t.headers)) : ['עמודה 1', 'עמודה 2', 'עמודה 3'],
+      gridData: t.gridData ? JSON.parse(JSON.stringify(t.gridData)) : [['', '', ''], ['', '', '']]
     };
   }
 
   const activeWeekData = t.weeklyData[wKey];
   return new Proxy(t, {
     get(target, prop) {
-      if (['items', 'images', 'activeImageIndex', 'imageData', 'canvasData', 'specialType', 'content', 'gridData'].includes(prop)) {
+      if (['items', 'images', 'activeImageIndex', 'imageData', 'canvasData', 'specialType', 'content', 'gridData', 'headers'].includes(prop)) {
         return activeWeekData[prop];
       }
       return target[prop];
     },
     set(target, prop, value) {
-      if (['items', 'images', 'activeImageIndex', 'imageData', 'canvasData', 'specialType', 'content', 'gridData'].includes(prop)) {
+      if (['items', 'images', 'activeImageIndex', 'imageData', 'canvasData', 'specialType', 'content', 'gridData', 'headers'].includes(prop)) {
         activeWeekData[prop] = value;
         return true;
       }
@@ -1115,6 +1153,10 @@ function renderFilteredTables() {
     const isFirst = (tIdx === 0);
     const isLast = (tIdx === filteredTbls.length - 1);
 
+    const sharedBadgeHtml = (t.sharedWith && t.sharedWith.length > 0)
+      ? `<span class="table-shared-badge" title="משותף עם: ${t.sharedWith.join(', ')}">👥 משותף (${t.sharedWith.length})</span>`
+      : '';
+
     card.innerHTML = `
       <div class="table-card-header">
         <div class="table-card-title-group">
@@ -1122,6 +1164,7 @@ function renderFilteredTables() {
           <span class="table-card-title">${t.title}</span>
           ${badgesHtml}
           ${resetBadgeHtml}
+          ${sharedBadgeHtml}
         </div>
         <div class="table-card-actions">
           <button type="button" class="btn-reorder tbl-up-btn" title="הזז טבלה למעלה" ${isFirst ? 'disabled' : ''}>⬆️</button>
@@ -1132,6 +1175,7 @@ function renderFilteredTables() {
           <button type="button" class="btn-compact-toggle" title="הגדל/מזער כרטיס טבלה">
             ${t.isCompact ? '📐 הרחב' : '📐 מזער'}
           </button>
+          <button type="button" class="btn-share-table" title="שיתוף טבלה זו עם משתמש נוסף">👥</button>
           <button type="button" class="edit-table-btn" title="עריכת הגדרות טבלה">✏️</button>
           <button type="button" class="delete-table-btn" title="מחיקת טבלה">&times;</button>
         </div>
@@ -1177,6 +1221,11 @@ function renderFilteredTables() {
       renderFilteredTables();
     });
 
+    const shareBtnEl = card.querySelector('.btn-share-table');
+    if (shareBtnEl) {
+      shareBtnEl.addEventListener('click', () => openShareModal(t));
+    }
+
     const editBtnEl = card.querySelector('.edit-table-btn');
     editBtnEl.addEventListener('click', () => openTableModal(t));
 
@@ -1190,8 +1239,18 @@ function renderFilteredTables() {
     const deleteBtnEl = card.querySelector('.delete-table-btn');
     deleteBtnEl.addEventListener('click', () => {
       saveStateToHistory();
+      const now = new Date();
+      const deletedItem = {
+        ...JSON.parse(JSON.stringify(t)),
+        deletedAtISO: formatDateISO(now),
+        deletedAtDate: formatDateOptionLabel(now),
+        deletedAtTime: now.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
+      };
       tables = tables.filter(tbl => tbl.id !== t.id);
+      deletedTables.unshift(deletedItem);
       renderFilteredTables();
+      saveDataToCloud();
+      showToast(`📦 הטבלה "${t.title}" הועברה לארכיון הטבלאות המחוקות`);
     });
 
     const bodyContainer = card.querySelector(`#tableBody_${t.id}`);
@@ -1243,8 +1302,134 @@ function renderFilteredTables() {
     });
   }
 
-  // Always append the special "Completed Tasks Log" card for the active tab
+  // Append Completed Tasks Log and Deleted Tables Archive
   renderCompletedTasksLogCard();
+  renderDeletedTablesArchiveCard();
+}
+
+let isDeletedTablesArchiveExpanded = false;
+
+// Special Card: Render Compact Centered Collapsible Archive Box at the bottom of "All" tab
+function renderDeletedTablesArchiveCard() {
+  const existingCard = document.getElementById('deletedTablesArchiveCard');
+  if (existingCard) existingCard.remove();
+
+  if (currentTab !== 'all') return;
+
+  const archiveWrapper = document.createElement('div');
+  archiveWrapper.id = 'deletedTablesArchiveCard';
+  archiveWrapper.className = 'deleted-tables-archive-wrapper';
+  archiveWrapper.style.margin = '3rem auto 1.5rem auto';
+  archiveWrapper.style.maxWidth = '460px';
+  archiveWrapper.style.width = '100%';
+  archiveWrapper.style.display = 'flex';
+  archiveWrapper.style.flexDirection = 'column';
+  archiveWrapper.style.alignItems = 'center';
+
+  // Toggle Header Button
+  const toggleBtn = document.createElement('button');
+  toggleBtn.type = 'button';
+  toggleBtn.className = 'btn btn-secondary archive-toggle-btn';
+  toggleBtn.style.padding = '0.45rem 1.25rem';
+  toggleBtn.style.borderRadius = '24px';
+  toggleBtn.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+  toggleBtn.style.background = 'rgba(15, 23, 42, 0.85)';
+  toggleBtn.style.color = '#f87171';
+  toggleBtn.style.fontSize = '0.9rem';
+  toggleBtn.style.fontWeight = '600';
+  toggleBtn.style.cursor = 'pointer';
+  toggleBtn.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.25)';
+  toggleBtn.style.display = 'flex';
+  toggleBtn.style.alignItems = 'center';
+  toggleBtn.style.gap = '0.5rem';
+  toggleBtn.style.transition = 'all 0.15s ease';
+
+  const arrow = isDeletedTablesArchiveExpanded ? '▴' : '▾';
+  toggleBtn.innerHTML = `<span>📦</span> <span>ארכיון (${deletedTables.length})</span> <span style="font-size:0.8rem;">${arrow}</span>`;
+
+  toggleBtn.addEventListener('click', () => {
+    isDeletedTablesArchiveExpanded = !isDeletedTablesArchiveExpanded;
+    renderDeletedTablesArchiveCard();
+  });
+
+  archiveWrapper.appendChild(toggleBtn);
+
+  // Expanded Content Box
+  if (isDeletedTablesArchiveExpanded) {
+    const listCard = document.createElement('div');
+    listCard.className = 'deleted-tables-archive-box';
+    listCard.style.width = '100%';
+    listCard.style.marginTop = '0.75rem';
+    listCard.style.padding = '1rem';
+    listCard.style.borderRadius = 'var(--radius-sm)';
+    listCard.style.border = '1px dashed rgba(239, 68, 68, 0.4)';
+    listCard.style.background = 'rgba(15, 23, 42, 0.95)';
+    listCard.style.boxShadow = '0 8px 25px rgba(0, 0, 0, 0.35)';
+
+    const listContainer = document.createElement('div');
+    listContainer.className = 'deleted-tables-list';
+    listContainer.style.display = 'flex';
+    listContainer.style.flexDirection = 'column';
+    listContainer.style.gap = '0.5rem';
+
+    if (deletedTables.length === 0) {
+      listContainer.innerHTML = `<p style="font-size:0.85rem; color:var(--text-muted); margin:0; text-align:center; padding:0.4rem 0;">אין טבלאות מחוקות בארכיון כרגע.</p>`;
+    } else {
+      deletedTables.forEach(t => {
+        const itemEl = document.createElement('div');
+        itemEl.className = 'completed-log-item';
+        itemEl.style.justifyContent = 'space-between';
+        itemEl.style.padding = '0.5rem 0.75rem';
+
+        const timeLabel = t.deletedAtTime ? `נמחקה ב-${t.deletedAtDate || ''} בשעה ${t.deletedAtTime}` : 'נמחקה';
+        const typeLabel = t.type === 'checkboxes' ? 'משימות' : (t.type === 'customGrid' ? 'עמודות ושורות' : (t.type === 'freeText' ? 'טקסט חופשי' : 'גלריה/ציור'));
+
+        itemEl.innerHTML = `
+          <div style="display:flex; flex-direction:column; gap:0.2rem; text-align:right;">
+            <span style="font-weight:bold; color:var(--text-primary); font-size:0.9rem;">${t.title} <small style="color:var(--text-muted); font-weight:normal;">(${typeLabel})</small></span>
+            <span style="font-size:0.75rem; color:var(--text-muted);">🕒 ${timeLabel}</span>
+          </div>
+          <div style="display:flex; gap:0.4rem; align-items:center;">
+            <button type="button" class="btn btn-sm btn-secondary restore-tbl-btn" title="שחזר טבלה זו ללוח" style="font-size:0.8rem;">↩️ שחזר</button>
+            <button type="button" class="btn btn-sm btn-icon permanent-del-tbl-btn" style="color:#ef4444;" title="מחיקה לצמיתות">&times;</button>
+          </div>
+        `;
+
+        // Restore table
+        itemEl.querySelector('.restore-tbl-btn').addEventListener('click', () => {
+          saveStateToHistory();
+          deletedTables = deletedTables.filter(tbl => tbl.id !== t.id);
+          tables.push(t);
+          renderFilteredTables();
+          saveDataToCloud();
+          showToast(`↩️ הטבלה "${t.title}" שוחזרה ללוח`);
+        });
+
+        // Permanent delete
+        itemEl.querySelector('.permanent-del-tbl-btn').addEventListener('click', () => {
+          if (confirm(`האם למחוק לצמיתות את הטבלה "${t.title}"? הפעולה לא ניתנת לביטול!`)) {
+            saveStateToHistory();
+            deletedTables = deletedTables.filter(tbl => tbl.id !== t.id);
+            renderFilteredTables();
+            saveDataToCloud();
+            showToast(`💥 הטבלה "${t.title}" נמחקה לצמיתות`);
+          }
+        });
+
+        listContainer.appendChild(itemEl);
+      });
+    }
+
+    listCard.appendChild(listContainer);
+    archiveWrapper.appendChild(listCard);
+  }
+
+  const bottomSection = document.querySelector('.bottom-section') || document.querySelector('.schedule-wrapper');
+  if (bottomSection) {
+    bottomSection.appendChild(archiveWrapper);
+  } else if (filteredTablesList) {
+    filteredTablesList.appendChild(archiveWrapper);
+  }
 }
 
 // Special Card: Render Completed Tasks Log for Active Tab View
@@ -1608,9 +1793,20 @@ function renderCheckboxTableBody(t, container) {
   container.appendChild(addBtn);
 }
 
-// Render Type 2: Custom Grid Table
+// Render Type 2: Custom Grid Table (Columns & Rows Matrix)
 function renderCustomGridTableBody(t, container) {
   container.innerHTML = '';
+
+  if (!t.headers || !Array.isArray(t.headers) || t.headers.length === 0) {
+    t.headers = ['עמודה 1', 'עמודה 2', 'עמודה 3'];
+  }
+  if (!t.gridData || !Array.isArray(t.gridData)) {
+    t.gridData = [
+      ['', '', ''],
+      ['', '', '']
+    ];
+  }
+
   const wrapper = document.createElement('div');
   wrapper.className = 'grid-table-wrapper';
 
@@ -1629,6 +1825,12 @@ function renderCustomGridTableBody(t, container) {
     input.addEventListener('input', () => {
       t.headers[cIdx] = input.value;
     });
+    input.addEventListener('change', () => {
+      saveStateToHistory();
+    });
+    input.addEventListener('blur', () => {
+      saveStateToHistory();
+    });
     th.appendChild(input);
     trHead.appendChild(th);
   });
@@ -1639,13 +1841,21 @@ function renderCustomGridTableBody(t, container) {
   const tbody = document.createElement('tbody');
   t.gridData.forEach((rowArray, rIdx) => {
     const tr = document.createElement('tr');
+    while (rowArray.length < t.headers.length) rowArray.push('');
     rowArray.forEach((cellVal, cIdx) => {
       const td = document.createElement('td');
       const input = document.createElement('input');
       input.type = 'text';
-      input.value = cellVal;
+      input.value = cellVal || '';
       input.addEventListener('input', () => {
+        if (!t.gridData[rIdx]) t.gridData[rIdx] = [];
         t.gridData[rIdx][cIdx] = input.value;
+      });
+      input.addEventListener('change', () => {
+        saveStateToHistory();
+      });
+      input.addEventListener('blur', () => {
+        saveStateToHistory();
       });
       td.appendChild(input);
       tr.appendChild(td);
@@ -1653,8 +1863,71 @@ function renderCustomGridTableBody(t, container) {
     tbody.appendChild(tr);
   });
   tableEl.appendChild(tbody);
-
   wrapper.appendChild(tableEl);
+
+  // Grid Control Toolbar (Add/Remove Rows & Columns)
+  const toolbar = document.createElement('div');
+  toolbar.className = 'grid-toolbar-controls';
+  toolbar.style.display = 'flex';
+  toolbar.style.gap = '0.4rem';
+  toolbar.style.marginTop = '0.6rem';
+  toolbar.style.flexWrap = 'wrap';
+
+  const addRowBtn = document.createElement('button');
+  addRowBtn.type = 'button';
+  addRowBtn.className = 'btn btn-sm btn-secondary';
+  addRowBtn.textContent = '➕ הוסף שורה';
+  addRowBtn.addEventListener('click', () => {
+    saveStateToHistory();
+    const newRow = new Array(t.headers.length).fill('');
+    t.gridData.push(newRow);
+    renderCustomGridTableBody(t, container);
+  });
+
+  const delRowBtn = document.createElement('button');
+  delRowBtn.type = 'button';
+  delRowBtn.className = 'btn btn-sm btn-secondary';
+  delRowBtn.textContent = '➖ מחק שורה';
+  if (t.gridData.length <= 1) delRowBtn.disabled = true;
+  delRowBtn.addEventListener('click', () => {
+    if (t.gridData.length > 1) {
+      saveStateToHistory();
+      t.gridData.pop();
+      renderCustomGridTableBody(t, container);
+    }
+  });
+
+  const addColBtn = document.createElement('button');
+  addColBtn.type = 'button';
+  addColBtn.className = 'btn btn-sm btn-secondary';
+  addColBtn.textContent = '➕ הוסף עמודה';
+  addColBtn.addEventListener('click', () => {
+    saveStateToHistory();
+    t.headers.push(`עמודה ${t.headers.length + 1}`);
+    t.gridData.forEach(r => r.push(''));
+    renderCustomGridTableBody(t, container);
+  });
+
+  const delColBtn = document.createElement('button');
+  delColBtn.type = 'button';
+  delColBtn.className = 'btn btn-sm btn-secondary';
+  delColBtn.textContent = '➖ מחק עמודה';
+  if (t.headers.length <= 1) delColBtn.disabled = true;
+  delColBtn.addEventListener('click', () => {
+    if (t.headers.length > 1) {
+      saveStateToHistory();
+      t.headers.pop();
+      t.gridData.forEach(r => r.pop());
+      renderCustomGridTableBody(t, container);
+    }
+  });
+
+  toolbar.appendChild(addRowBtn);
+  toolbar.appendChild(delRowBtn);
+  toolbar.appendChild(addColBtn);
+  toolbar.appendChild(delColBtn);
+
+  wrapper.appendChild(toolbar);
   container.appendChild(wrapper);
 }
 
@@ -1667,6 +1940,12 @@ function renderFreeTextTableBody(t, container) {
   textarea.value = t.textContent || '';
   textarea.addEventListener('input', () => {
     t.textContent = textarea.value;
+  });
+  textarea.addEventListener('change', () => {
+    saveStateToHistory();
+  });
+  textarea.addEventListener('blur', () => {
+    saveStateToHistory();
   });
   container.appendChild(textarea);
 }
@@ -2609,6 +2888,7 @@ function initCloudSync() {
 
   setupAuthListeners();
   setupSyncModalListeners();
+  setupShareModalListeners();
 
   if (currentUser) {
     updateUserProfileUI();
@@ -2803,6 +3083,111 @@ function updateSyncStatusBadge(status) {
   }
 }
 
+// ==========================================
+// TABLE SHARING ENGINE (👥 שיתוף טבלאות)
+// ==========================================
+let activeSharingTable = null;
+let sharedTablesUnsubscribe = null;
+
+function setupShareModalListeners() {
+  const shareModal = document.getElementById('shareModal');
+  const closeShareModalBtn = document.getElementById('closeShareModalBtn');
+  const shareUserForm = document.getElementById('shareUserForm');
+  const shareEmailInput = document.getElementById('shareEmailInput');
+
+  if (closeShareModalBtn) {
+    closeShareModalBtn.addEventListener('click', closeShareModal);
+  }
+
+  if (shareModal) {
+    shareModal.addEventListener('click', (e) => {
+      if (e.target === shareModal) closeShareModal();
+    });
+  }
+
+  if (shareUserForm) {
+    shareUserForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!activeSharingTable) return;
+      const email = shareEmailInput.value.trim().toLowerCase();
+      if (!email) return;
+
+      if (!activeSharingTable.sharedWith) activeSharingTable.sharedWith = [];
+      if (activeSharingTable.sharedWith.includes(email)) {
+        alert('האימייל כבר מופיע ברשימת השותפים בטבלה זו!');
+        return;
+      }
+
+      saveStateToHistory();
+      activeSharingTable.sharedWith.push(email);
+      activeSharingTable.isShared = true;
+      if (currentUser && currentUser.email) {
+        activeSharingTable.ownerEmail = currentUser.email.toLowerCase();
+      }
+
+      shareEmailInput.value = '';
+      renderSharedUsersList();
+      renderFilteredTables();
+      saveDataToCloud();
+      showToast(`👥 הטבלה שותפה בהצלחה עם ${email}!`);
+    });
+  }
+}
+
+function openShareModal(t) {
+  activeSharingTable = t;
+  const modal = document.getElementById('shareModal');
+  const title = document.getElementById('shareModalTitle');
+  if (title) title.textContent = `👥 שיתוף טבלה: "${t.title}"`;
+  renderSharedUsersList();
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+  }
+}
+
+function closeShareModal() {
+  const modal = document.getElementById('shareModal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+  activeSharingTable = null;
+}
+
+function renderSharedUsersList() {
+  const container = document.getElementById('sharedUsersList');
+  if (!container || !activeSharingTable) return;
+  container.innerHTML = '';
+
+  const sharedWith = activeSharingTable.sharedWith || [];
+  if (sharedWith.length === 0) {
+    container.innerHTML = `<p style="font-size:0.85rem; color:var(--text-muted); margin:0;">אין שותפים בטבלה זו עדיין.</p>`;
+    return;
+  }
+
+  sharedWith.forEach(email => {
+    const item = document.createElement('div');
+    item.className = 'shared-user-item';
+    item.innerHTML = `
+      <span>👤 ${email}</span>
+      <button type="button" class="btn btn-sm btn-icon" style="color:#ef4444;" title="הסר שותף">&times;</button>
+    `;
+    item.querySelector('button').addEventListener('click', () => {
+      saveStateToHistory();
+      activeSharingTable.sharedWith = activeSharingTable.sharedWith.filter(e => e !== email);
+      if (activeSharingTable.sharedWith.length === 0) {
+        activeSharingTable.isShared = false;
+      }
+      renderSharedUsersList();
+      renderFilteredTables();
+      saveDataToCloud();
+      showToast(`🗑️ השותף ${email} הוסר מהטבלה`);
+    });
+    container.appendChild(item);
+  });
+}
+
 function saveDataToCloud() {
   saveStateToLocalStorage();
   if (!db || isReceivingCloudUpdate) return;
@@ -2824,6 +3209,20 @@ function saveDataToCloud() {
         console.warn('Cloud sync error (saved locally):', err);
         updateSyncStatusBadge('local');
       });
+
+    // Save individual shared tables to Firestore 'sharedTables' collection for real-time multi-user sync
+    tables.forEach(t => {
+      if (t.sharedWith && t.sharedWith.length > 0) {
+        const sharedDoc = {
+          ...JSON.parse(JSON.stringify(t)),
+          ownerEmail: (currentUser && currentUser.email) ? currentUser.email.toLowerCase() : 'anon',
+          sharedWith: t.sharedWith.map(e => e.toLowerCase()),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          lastDeviceId: myDeviceId
+        };
+        db.collection('sharedTables').doc(t.id).set(sharedDoc, { merge: true }).catch(e => console.warn('Shared table save warning:', e));
+      }
+    });
   }, 400);
 }
 
@@ -2843,14 +3242,32 @@ function subscribeToCloudUpdates() {
     }
 
     const data = snapshot.data();
-    if (!data || data.lastDeviceId === myDeviceId) {
+    if (!data) {
+      updateSyncStatusBadge('synced');
+      return;
+    }
+
+    if (data.lastDeviceId === myDeviceId) {
       updateSyncStatusBadge('synced');
       return;
     }
 
     isReceivingCloudUpdate = true;
-    if (data.tables) tables = data.tables;
-    if (data.events) events = data.events;
+    if (data.tables && Array.isArray(data.tables)) {
+      if (data.tables.length > 0 || tables.length === 0) {
+        tables = data.tables;
+      }
+    }
+    if (data.events && Array.isArray(data.events)) {
+      if (data.events.length > 0 || events.length === 0) {
+        events = data.events;
+      }
+    }
+    if (data.deletedTables && Array.isArray(data.deletedTables)) {
+      if (data.deletedTables.length > 0 || deletedTables.length === 0) {
+        deletedTables = data.deletedTables;
+      }
+    }
     if (data.completedTasksHistory && typeof completedTasksHistory !== 'undefined') {
       completedTasksHistory = data.completedTasksHistory;
     }
@@ -2868,6 +3285,37 @@ function subscribeToCloudUpdates() {
     console.warn('Firestore snapshot listener warning:', err);
     updateSyncStatusBadge('synced');
   });
+
+  // Also subscribe to shared tables where currentUser is a collaborator!
+  if (currentUser && currentUser.email && db) {
+    if (sharedTablesUnsubscribe) sharedTablesUnsubscribe();
+    try {
+      sharedTablesUnsubscribe = db.collection('sharedTables')
+        .where('sharedWith', 'array-contains', currentUser.email.toLowerCase())
+        .onSnapshot(sharedSnap => {
+          if (!sharedSnap || sharedSnap.empty) return;
+          let hasChanges = false;
+          sharedSnap.forEach(docSnap => {
+            const sharedTableData = docSnap.data();
+            if (sharedTableData) {
+              const existingIdx = tables.findIndex(tbl => tbl.id === sharedTableData.id);
+              if (existingIdx !== -1) {
+                tables[existingIdx] = sharedTableData;
+              } else {
+                tables.push(sharedTableData);
+              }
+              hasChanges = true;
+            }
+          });
+          if (hasChanges) {
+            saveStateToLocalStorage();
+            renderFilteredTables();
+          }
+        }, err => console.warn('Shared tables listener warning:', err));
+    } catch (e) {
+      console.warn('Shared tables subscription warning:', e);
+    }
+  }
 }
 
 function setupSyncModalListeners() {
