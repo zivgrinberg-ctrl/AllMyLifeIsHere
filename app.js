@@ -3264,6 +3264,7 @@ function setupAuthListeners() {
 
     updateUserProfileUI();
     closeAuthModal();
+    saveDataToCloud();
     subscribeToCloudUpdates();
     showToast(`🌐 התחברת בהצלחה עם Google, ברוך הבא ${userObj.name}!`);
   }
@@ -3486,7 +3487,10 @@ function subscribeToCloudUpdates() {
 
   cloudUnsubscribe = db.collection('boards').doc(currentSyncKey).onSnapshot(snapshot => {
     if (!snapshot.exists) {
-      saveDataToCloud();
+      if (tables.length > 0 || events.length > 0) {
+        saveDataToCloud();
+      }
+      updateSyncStatusBadge('synced');
       return;
     }
 
