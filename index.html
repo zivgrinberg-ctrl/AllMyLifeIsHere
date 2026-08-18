@@ -63,6 +63,12 @@
     <!-- Main Content: Schedule Grid & Bottom Section -->
     <main class="schedule-wrapper">
       <div class="schedule-container" id="scheduleContainer">
+        <!-- Centered Header Collapse Toggle Handle -->
+        <button type="button" id="scheduleToggleBtn" class="schedule-toggle-handle" title="מזער/הרחב מערכת שעות">
+          <span id="scheduleToggleIcon">▲</span>
+          <span id="scheduleToggleText">מזער מערכת שעות</span>
+        </button>
+
         <!-- Grid Header (Days) -->
         <div class="grid-header" id="gridHeader">
           <div class="time-column-header">שעה</div>
@@ -371,7 +377,14 @@
             <form id="connectSyncForm" class="sync-connect-form" style="display:flex; gap:0.5rem; align-items:center;">
               <input type="text" id="targetSyncKeyInput" class="form-input" placeholder="הזן קוד סנכרון (למשל: LIFE-9A8B)" style="text-transform:uppercase;" required>
               <button type="submit" class="btn btn-primary" style="white-space:nowrap;">🔗 התחבר ללוח זה</button>
-            </form>
+          </div>
+
+          <hr class="modal-divider" style="margin: 1.25rem 0; border: none; border-top: 1px solid var(--border-color);">
+
+          <div class="sync-modal-section" style="text-align: center;">
+            <button type="button" id="emergencyRecoveryBtn" class="btn btn-secondary" style="width: 100%; border: 1px solid var(--accent-primary); color: #a5b4fc;">
+              🛡️ סריקת ענן ושחזור חירום של כל הלוחות והטבלאות מהעבר
+            </button>
           </div>
         </div>
       </div>

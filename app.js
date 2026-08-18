@@ -256,6 +256,38 @@ const GRID_START_HOUR = 0; // 00:00 (24 Hours)
 const GRID_END_HOUR = 23;  // 23:00
 const SLOT_HEIGHT = 54;    // 54px per hour slot
 
+let isScheduleMinimized = (window.innerWidth <= 768);
+
+function updateScheduleToggleUI() {
+  const scheduleContainer = document.getElementById('scheduleContainer');
+  const scheduleToggleBtn = document.getElementById('scheduleToggleBtn');
+  const scheduleToggleText = document.getElementById('scheduleToggleText');
+  const scheduleToggleIcon = document.getElementById('scheduleToggleIcon');
+
+  if (!scheduleContainer || !scheduleToggleBtn) return;
+
+  if (isScheduleMinimized) {
+    scheduleContainer.classList.add('minimized-schedule');
+    if (scheduleToggleText) scheduleToggleText.textContent = 'הרחב מערכת שעות';
+    if (scheduleToggleIcon) scheduleToggleIcon.textContent = '▼';
+  } else {
+    scheduleContainer.classList.remove('minimized-schedule');
+    if (scheduleToggleText) scheduleToggleText.textContent = 'מזער מערכת שעות';
+    if (scheduleToggleIcon) scheduleToggleIcon.textContent = '▲';
+  }
+}
+
+function initScheduleToggle() {
+  const scheduleToggleBtn = document.getElementById('scheduleToggleBtn');
+  if (scheduleToggleBtn) {
+    scheduleToggleBtn.addEventListener('click', () => {
+      isScheduleMinimized = !isScheduleMinimized;
+      updateScheduleToggleUI();
+    });
+  }
+  updateScheduleToggleUI();
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
   loadBackupFromLocalStorage();
@@ -266,6 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
   updateWeekRangeLabel();
   scrollToSixAM();
   renderFilteredTables();
+  initScheduleToggle();
 
   // Navigation Event Listeners
   prevWeekBtn.addEventListener('click', () => {
@@ -3299,21 +3332,13 @@ function setupAuthListeners() {
   if (logoutBtn) {
     logoutBtn.addEventListener('click', () => {
       if (confirm('האם תרצה להתנתק מהחשבון?')) {
+        saveStateToHistory();
         currentUser = null;
         localStorage.removeItem('allmylifeishere_user');
         deleteCookie('allmylifeishere_user');
 
-        tables = [];
-        events = [];
-        deletedTables = [];
-        localStorage.removeItem('allmylifeishere_board_backup');
-
-        if (cloudUnsubscribe) cloudUnsubscribe();
-
         updateUserProfileUI();
-        renderHeaderDays();
-        renderGridRows();
-        renderFilteredTables();
+        saveStateToLocalStorage();
         openAuthModal();
         showToast('🚪 התנתקת בהצלחה מהחשבון');
       }
@@ -3487,10 +3512,84 @@ function saveDataToCloud() {
   }, 400);
 }
 
+function recoverAllPastBoardsFromCloudAndLocal() {
+  if (!db) return;
+
+  let recoveredTablesCount = 0;
+  let recoveredEventsCount = 0;
+
+  db.collection('boards').get().then(snapshot => {
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      if (data) {
+        if (data.tables && Array.isArray(data.tables)) {
+          data.tables.forEach(t => {
+            if (!tables.some(existing => existing.id === t.id)) {
+              tables.push(t);
+              recoveredTablesCount++;
+            }
+          });
+        }
+        if (data.deletedTables && Array.isArray(data.deletedTables)) {
+          data.deletedTables.forEach(t => {
+            if (!tables.some(existing => existing.id === t.id)) {
+              tables.push(t);
+              recoveredTablesCount++;
+            }
+          });
+        }
+        if (data.events && Array.isArray(data.events)) {
+          data.events.forEach(ev => {
+            if (!events.some(existing => existing.id === ev.id)) {
+              events.push(ev);
+              recoveredEventsCount++;
+            }
+          });
+        }
+      }
+    });
+
+    db.collection('sharedTables').get().then(sSnap => {
+      sSnap.forEach(doc => {
+        const t = doc.data();
+        if (t && t.id && !tables.some(existing => existing.id === t.id)) {
+          tables.push(t);
+          recoveredTablesCount++;
+        }
+      });
+
+      if (recoveredTablesCount > 0 || recoveredEventsCount > 0) {
+        saveStateToLocalStorage();
+        renderFilteredTables();
+        renderGridRows();
+        renderHeaderDays();
+        showToast(`🛡️ שוחזרו בהצלחה ${recoveredTablesCount} טבלאות מגיבוי הענן!`);
+      } else {
+        showToast('🛡️ סריקת הגיבויים הושלמה!');
+      }
+    }).catch(() => {
+      if (recoveredTablesCount > 0 || recoveredEventsCount > 0) {
+        saveStateToLocalStorage();
+        renderFilteredTables();
+        renderGridRows();
+        renderHeaderDays();
+        showToast(`🛡️ שוחזרו בהצלחה ${recoveredTablesCount} טבלאות מגיבוי הענן!`);
+      }
+    });
+  }).catch(err => {
+    console.warn('Auto-recovery query notice:', err);
+  });
+}
+
 function subscribeToCloudUpdates() {
   if (!db) {
     updateSyncStatusBadge('local');
     return;
+  }
+
+  // Auto-scan past cloud backups if local tables are currently empty
+  if (tables.length === 0) {
+    recoverAllPastBoardsFromCloudAndLocal();
   }
 
   if (cloudUnsubscribe) cloudUnsubscribe();
@@ -3519,21 +3618,39 @@ function subscribeToCloudUpdates() {
     isReceivingCloudUpdate = true;
     if (data.tables && Array.isArray(data.tables)) {
       if (data.tables.length > 0) {
-        tables = data.tables;
+        const mergedTables = [...data.tables];
+        tables.forEach(localT => {
+          if (!mergedTables.some(ct => ct.id === localT.id)) {
+            mergedTables.push(localT);
+          }
+        });
+        tables = mergedTables;
       } else if (tables.length > 0) {
         saveDataToCloud();
       }
     }
     if (data.events && Array.isArray(data.events)) {
       if (data.events.length > 0) {
-        events = data.events;
+        const mergedEvents = [...data.events];
+        events.forEach(localEv => {
+          if (!mergedEvents.some(ce => ce.id === localEv.id)) {
+            mergedEvents.push(localEv);
+          }
+        });
+        events = mergedEvents;
       } else if (events.length > 0) {
         saveDataToCloud();
       }
     }
     if (data.deletedTables && Array.isArray(data.deletedTables)) {
       if (data.deletedTables.length > 0) {
-        deletedTables = data.deletedTables;
+        const mergedDel = [...data.deletedTables];
+        deletedTables.forEach(localDel => {
+          if (!mergedDel.some(cd => cd.id === localDel.id)) {
+            mergedDel.push(localDel);
+          }
+        });
+        deletedTables = mergedDel;
       } else if (deletedTables.length > 0) {
         saveDataToCloud();
       }
@@ -3635,6 +3752,13 @@ function setupSyncModalListeners() {
         syncModal.classList.add('hidden');
         syncModal.setAttribute('aria-hidden', 'true');
       }
+    });
+  }
+
+  const emergencyRecoveryBtn = document.getElementById('emergencyRecoveryBtn');
+  if (emergencyRecoveryBtn) {
+    emergencyRecoveryBtn.addEventListener('click', () => {
+      recoverAllPastBoardsFromCloudAndLocal();
     });
   }
 }
