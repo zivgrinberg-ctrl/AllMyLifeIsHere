@@ -3264,7 +3264,10 @@ function setupAuthListeners() {
 
     updateUserProfileUI();
     closeAuthModal();
-    saveDataToCloud();
+
+    if (tables.length > 0) {
+      saveDataToCloud();
+    }
     subscribeToCloudUpdates();
     showToast(`🌐 התחברת בהצלחה עם Google, ברוך הבא ${userObj.name}!`);
   }
@@ -3296,13 +3299,21 @@ function setupAuthListeners() {
   if (logoutBtn) {
     logoutBtn.addEventListener('click', () => {
       if (confirm('האם תרצה להתנתק מהחשבון?')) {
-        saveStateToHistory();
         currentUser = null;
         localStorage.removeItem('allmylifeishere_user');
         deleteCookie('allmylifeishere_user');
 
+        tables = [];
+        events = [];
+        deletedTables = [];
+        localStorage.removeItem('allmylifeishere_board_backup');
+
+        if (cloudUnsubscribe) cloudUnsubscribe();
+
         updateUserProfileUI();
-        subscribeToCloudUpdates();
+        renderHeaderDays();
+        renderGridRows();
+        renderFilteredTables();
         openAuthModal();
         showToast('🚪 התנתקת בהצלחה מהחשבון');
       }
