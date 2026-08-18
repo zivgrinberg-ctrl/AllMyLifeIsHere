@@ -6,11 +6,188 @@ let deletedTables = []; // Deleted Tables Archive
 let editingEventId = null;
 let editingTableId = null;
 let currentTab = 'all'; // Single active tab: 'all' | 'today' | 'life' | 'work' | 'fun'
+let googleIcalUrl = localStorage.getItem('allmylifeishere_google_ical_url') || '';
+let googleEvents = [];
+let activeGoogleEvent = null;
 
 // History Stack for Ctrl+Z (Undo) & Ctrl+Shift+Z (Redo)
 let historyStack = [];
 let redoStack = [];
 const MAX_HISTORY_STEPS = 50;
+
+function parseICSContent(icsText) {
+  const parsedEvents = [];
+  const veventBlocks = icsText.split('BEGIN:VEVENT');
+
+  veventBlocks.forEach((block, idx) => {
+    if (idx === 0) return;
+
+    let summary = 'אירוע גוגל קלנדר';
+    let dtstart = '';
+    let dtend = '';
+    let recurrence = 'none';
+
+    const summaryMatch = block.match(/SUMMARY:(.*)/);
+    if (summaryMatch) summary = summaryMatch[1].replace(/\\,/g, ',').replace(/\\;/g, ';').trim();
+
+    const dtstartMatch = block.match(/DTSTART(?:;[^:]+)?:([0-9T]+)/);
+    if (dtstartMatch) dtstart = dtstartMatch[1].trim();
+
+    const dtendMatch = block.match(/DTEND(?:;[^:]+)?:([0-9T]+)/);
+    if (dtendMatch) dtend = dtendMatch[1].trim();
+
+    const rruleMatch = block.match(/RRULE:(.*)/);
+    if (rruleMatch) {
+      if (rruleMatch[1].includes('FREQ=WEEKLY')) recurrence = 'weekly';
+      else if (rruleMatch[1].includes('FREQ=MONTHLY')) recurrence = 'monthly';
+    }
+
+    if (dtstart) {
+      let dateStr = '';
+      let startTimeStr = '09:00';
+      let endTimeStr = '10:00';
+
+      if (dtstart.length >= 8) {
+        const y = dtstart.substring(0, 4);
+        const m = dtstart.substring(4, 6);
+        const d = dtstart.substring(6, 8);
+        dateStr = `${y}-${m}-${d}`;
+      }
+
+      if (dtstart.includes('T') && dtstart.length >= 13) {
+        const tIdx = dtstart.indexOf('T');
+        const hh = dtstart.substring(tIdx + 1, tIdx + 3);
+        const mm = dtstart.substring(tIdx + 3, tIdx + 5);
+        startTimeStr = `${hh}:${mm}`;
+      }
+
+      if (dtend && dtend.includes('T') && dtend.length >= 13) {
+        const tIdx = dtend.indexOf('T');
+        const hh = dtend.substring(tIdx + 1, tIdx + 3);
+        const mm = dtend.substring(tIdx + 3, tIdx + 5);
+        endTimeStr = `${hh}:${mm}`;
+      }
+
+      if (dateStr) {
+        parsedEvents.push({
+          id: 'g_event_' + idx + '_' + dateStr,
+          title: summary,
+          date: dateStr,
+          endDate: dateStr,
+          startTime: startTimeStr,
+          endTime: endTimeStr,
+          category: 'google',
+          recurrence: recurrence,
+          isReadOnly: true,
+          source: 'google_calendar'
+        });
+      }
+    }
+  });
+
+  return parsedEvents;
+}
+
+function fetchGoogleICSFeed(url) {
+  if (!url) return;
+
+  // Automatically clean webcal:// protocol to https://
+  url = url.trim().replace(/^webcal:\/\//i, 'https://');
+
+  const statusEl = document.getElementById('googleIcalStatus');
+  const clearBtn = document.getElementById('clearGoogleIcalBtn');
+  const inputEl = document.getElementById('googleIcalUrlInput');
+
+  if (inputEl) inputEl.value = url;
+  if (statusEl) {
+    statusEl.textContent = '⏳ קורא אירועים מיומן גוגל...';
+    statusEl.classList.remove('hidden');
+  }
+
+  const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+
+  fetch(proxyUrl)
+    .then(res => {
+      if (!res.ok) throw new Error('CORS fetch error');
+      return res.text();
+    })
+    .then(text => {
+      const parsed = parseICSContent(text);
+      if (parsed.length > 0) {
+        googleEvents = parsed;
+        googleIcalUrl = url;
+        localStorage.setItem('allmylifeishere_google_ical_url', url);
+        if (statusEl) {
+          statusEl.textContent = `✅ יומן גוגל מסונכרן! נטענו ${parsed.length} אירועים מ-Google Calendar`;
+          statusEl.classList.remove('hidden');
+        }
+        if (clearBtn) clearBtn.classList.remove('hidden');
+        renderHeaderDays();
+        renderGridRows();
+        showToast(`📅 נטענו ${parsed.length} אירועים מ-Google Calendar!`);
+      } else {
+        if (statusEl) {
+          statusEl.textContent = '⚠️ לא נמצאו אירועים בקישור iCal זה. תוכל גם להעלות קובץ .ics ישירות!';
+          statusEl.classList.remove('hidden');
+        }
+      }
+    })
+    .catch(err => {
+      console.warn('Google iCal primary proxy notice, trying secondary proxy:', err);
+      const fallbackUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+      fetch(fallbackUrl)
+        .then(r => r.text())
+        .then(text => {
+          const parsed = parseICSContent(text);
+          if (parsed.length > 0) {
+            googleEvents = parsed;
+            googleIcalUrl = url;
+            localStorage.setItem('allmylifeishere_google_ical_url', url);
+            if (statusEl) {
+              statusEl.textContent = `✅ יומן גוגל מסונכרן! נטענו ${parsed.length} אירועים מ-Google Calendar`;
+              statusEl.classList.remove('hidden');
+            }
+            if (clearBtn) clearBtn.classList.remove('hidden');
+            renderHeaderDays();
+            renderGridRows();
+            showToast(`📅 נטענו ${parsed.length} אירועים מ-Google Calendar!`);
+          }
+        })
+        .catch(e => {
+          if (statusEl) {
+            statusEl.textContent = '❌ לא ניתן לקרוא את קישור ה-iCal באינטרנט. נסה להעלות את קובץ ה-ics. ישירות למעלה!';
+            statusEl.classList.remove('hidden');
+          }
+        });
+    });
+}
+
+function handleGoogleIcsFileUpload(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const parsed = parseICSContent(e.target.result);
+      if (parsed.length > 0) {
+        googleEvents = parsed;
+        const statusEl = document.getElementById('googleIcalStatus');
+        const clearBtn = document.getElementById('clearGoogleIcalBtn');
+        if (statusEl) {
+          statusEl.textContent = `✅ קובץ יומן גוגל נטען! נטענו ${parsed.length} אירועים מ-Google Calendar`;
+          statusEl.classList.remove('hidden');
+        }
+        if (clearBtn) clearBtn.classList.remove('hidden');
+        renderHeaderDays();
+        renderGridRows();
+        showToast(`📅 נטענו ${parsed.length} אירועים מקובץ Google Calendar!`);
+      } else {
+        alert('⚠️ לא נמצאו אירועים תקינים בקובץ ה-ICS שהועלה.');
+      }
+    } catch (err) {
+      alert('❌ שגיאה בקריאת קובץ ה-ICS.');
+    }
+  };
+  reader.readAsText(file);
+}
 
 function saveStateToHistory() {
   const snapshot = JSON.stringify({
@@ -40,8 +217,29 @@ function saveStateToHistory() {
 function saveStateToLocalStorage() {
   try {
     localStorage.setItem('allmylifeishere_board_backup', JSON.stringify({ tables, events, deletedTables }));
+    saveVaultSnapshot();
   } catch (e) {
     console.warn('LocalStorage save backup notice:', e);
+  }
+}
+
+function saveVaultSnapshot() {
+  if (tables.length === 0 && events.length === 0) return;
+  try {
+    const vaultStr = localStorage.getItem('allmylifeishere_history_vault');
+    let vault = vaultStr ? JSON.parse(vaultStr) : [];
+    const newSnapshot = {
+      timestamp: new Date().toISOString(),
+      tables: JSON.parse(JSON.stringify(tables)),
+      events: JSON.parse(JSON.stringify(events)),
+      deletedTables: JSON.parse(JSON.stringify(deletedTables))
+    };
+    if (vault.length > 0 && JSON.stringify(vault[0].tables) === JSON.stringify(newSnapshot.tables)) return;
+    vault.unshift(newSnapshot);
+    if (vault.length > 10) vault = vault.slice(0, 10);
+    localStorage.setItem('allmylifeishere_history_vault', JSON.stringify(vault));
+  } catch (e) {
+    console.warn('Vault snapshot notice:', e);
   }
 }
 
@@ -665,7 +863,8 @@ function renderGridRows() {
 
     // Calculate overlapping & nesting for events on this day
     const dayEventsList = [];
-    events.forEach(ev => {
+    const combinedEvents = [...events, ...googleEvents];
+    combinedEvents.forEach(ev => {
       const bounds = getEventBoundsForDate(ev, dateISO);
       if (!bounds) return;
 
@@ -704,10 +903,12 @@ function renderGridRows() {
       const isRecurring = ev.recurrence && ev.recurrence !== 'none';
       const recurrenceIcon = isRecurring ? '<span class="recurrence-badge" title="אירוע מחזורי">🔄</span>' : '';
       const multiDayBadge = bounds.isMultiDay ? `<span class="multiday-badge" title="יום ${bounds.dayIndex} מתוך ${bounds.totalDays}">🗓️</span>` : '';
+      const isGoogle = ev.category === 'google' || ev.isReadOnly;
+      const googleBadge = isGoogle ? '<span class="cat-google-badge" title="אירוע מ-Google Calendar (לקריאה בלבד)">🔒 Google</span>' : '';
       const categoryClass = `cat-${ev.category || 'regular'}`;
       const overlapClass = indent > 0 ? 'overlapping-card' : '';
 
-      const indentPercent = Math.min(indent * 22, 60); // 22% offset per nesting level (max 60%)
+      const indentPercent = Math.min(indent * 22, 60);
 
       const evCard = document.createElement('div');
       evCard.className = `event-card ${categoryClass} ${overlapClass}`;
@@ -718,7 +919,7 @@ function renderGridRows() {
       evCard.style.height = `${Math.max(heightPx - 2, 22)}px`;
 
       evCard.innerHTML = `
-        <div class="event-card-title">${ev.title} ${recurrenceIcon} ${multiDayBadge}</div>
+        <div class="event-card-title">${ev.title} ${googleBadge} ${recurrenceIcon} ${multiDayBadge}</div>
         <div class="event-card-time">${bounds.startTime} - ${bounds.endTime}</div>
       `;
 
@@ -755,6 +956,46 @@ function openModal(defaultValues = {}) {
   const defaultStart = defaultValues.startTime || '09:00';
   const defaultEnd = defaultValues.endTime || '10:00';
 
+  const dupGoogleBtn = document.getElementById('duplicateGoogleEventBtn');
+
+  // Reset read-only & disabled states
+  eventTitleInput.readOnly = false;
+  eventDateInput.disabled = false;
+  eventEndDateInput.disabled = false;
+  eventStartTimeInput.disabled = false;
+  eventEndTimeInput.disabled = false;
+  eventRecurrenceInput.disabled = false;
+  if (dupGoogleBtn) dupGoogleBtn.classList.add('hidden');
+
+  if (defaultValues && (defaultValues.category === 'google' || defaultValues.isReadOnly)) {
+    activeGoogleEvent = defaultValues;
+    editingEventId = null;
+    modalTitle.textContent = '📅 אירוע מ-Google Calendar (לקריאה בלבד)';
+    deleteEventBtn.classList.add('hidden');
+    duplicateEventBtn.classList.add('hidden');
+    if (dupGoogleBtn) dupGoogleBtn.classList.remove('hidden');
+
+    ensureDateOptionExists(eventDateInput, defaultDate);
+    ensureDateOptionExists(eventEndDateInput, defaultEndDate);
+
+    eventTitleInput.value = defaultValues.title || '';
+    eventTitleInput.readOnly = true;
+    eventDateInput.value = defaultDate;
+    eventDateInput.disabled = true;
+    eventEndDateInput.value = defaultEndDate;
+    eventEndDateInput.disabled = true;
+    eventStartTimeInput.value = defaultStart;
+    eventStartTimeInput.disabled = true;
+    eventEndTimeInput.value = defaultEnd;
+    eventEndTimeInput.disabled = true;
+    eventRecurrenceInput.value = defaultValues.recurrence || 'none';
+    eventRecurrenceInput.disabled = true;
+
+    eventModal.classList.remove('hidden');
+    eventModal.setAttribute('aria-hidden', 'false');
+    return;
+  }
+
   if (defaultValues && defaultValues.id) {
     editingEventId = defaultValues.id;
     modalTitle.textContent = 'עריכת אירוע';
@@ -777,7 +1018,6 @@ function openModal(defaultValues = {}) {
   eventEndTimeInput.value = defaultEnd;
   eventRecurrenceInput.value = defaultValues.recurrence || 'none';
 
-  // Category Radio Selection
   const activeCat = ['life', 'work', 'fun'].includes(currentTab) ? currentTab : 'life';
   const cat = defaultValues.category || activeCat;
   const radioToSelect = document.querySelector(`input[name="eventCategory"][value="${cat}"]`);
@@ -792,9 +1032,51 @@ function closeModal() {
   eventModal.classList.add('hidden');
   eventModal.setAttribute('aria-hidden', 'true');
   editingEventId = null;
+  activeGoogleEvent = null;
   deleteEventBtn.classList.add('hidden');
   duplicateEventBtn.classList.add('hidden');
+
+  const dupGoogleBtn = document.getElementById('duplicateGoogleEventBtn');
+  if (dupGoogleBtn) dupGoogleBtn.classList.add('hidden');
+
+  eventTitleInput.readOnly = false;
+  eventDateInput.disabled = false;
+  eventEndDateInput.disabled = false;
+  eventStartTimeInput.disabled = false;
+  eventEndTimeInput.disabled = false;
+  eventRecurrenceInput.disabled = false;
+
   eventForm.reset();
+}
+
+function duplicateGoogleEventToLocal() {
+  if (!activeGoogleEvent) return;
+
+  const targetCategory = prompt('בחר קטגוריה לשכפול האירוע למערכת השעות:\n1 = חיים\n2 = עבודה/פרויקטים\n3 = כיף\n4 = רגיל', '1');
+  let selectedCat = 'life';
+  if (targetCategory === '2') selectedCat = 'work';
+  else if (targetCategory === '3') selectedCat = 'fun';
+  else if (targetCategory === '4') selectedCat = 'regular';
+
+  saveStateToHistory();
+
+  const newEv = {
+    id: 'evt_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+    title: activeGoogleEvent.title,
+    date: activeGoogleEvent.date,
+    endDate: activeGoogleEvent.endDate || activeGoogleEvent.date,
+    startTime: activeGoogleEvent.startTime,
+    endTime: activeGoogleEvent.endTime,
+    category: selectedCat,
+    recurrence: activeGoogleEvent.recurrence || 'none',
+    createdAt: new Date().toISOString()
+  };
+
+  events.push(newEv);
+  saveDataToCloud();
+  closeModal();
+  updateView();
+  showToast(`📋 האירוע "${newEv.title}" שוכפל בהצלחה למערכת!`);
 }
 
 function handleFormSubmit(e) {
@@ -2323,38 +2605,11 @@ function handleSingleEventGoogleSync() {
 }
 
 function handleGlobalGoogleSync() {
-  if (events.length === 0) {
-    alert('אין עדיין אירועים ביומן לייצוא. אנא הוסף אירוע ראשון תחילה.');
-    return;
+  const syncModal = document.getElementById('syncModal');
+  if (syncModal) {
+    syncModal.classList.remove('hidden');
+    syncModal.setAttribute('aria-hidden', 'false');
   }
-
-  let icsContent = "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//allmylifeishere//Calendar Sync//HE\n";
-  events.forEach(ev => {
-    const sDate = ev.date.replace(/-/g, '') + 'T' + ev.startTime.replace(':', '') + '00';
-    const eDate = (ev.endDate || ev.date).replace(/-/g, '') + 'T' + ev.endTime.replace(':', '') + '00';
-    icsContent += "BEGIN:VEVENT\n";
-    icsContent += `SUMMARY:${ev.title}\n`;
-    icsContent += `DTSTART:${sDate}\n`;
-    icsContent += `DTEND:${eDate}\n`;
-    if (ev.recurrence === 'weekly') icsContent += "RRULE:FREQ=WEEKLY\n";
-    else if (ev.recurrence === 'biweekly') icsContent += "RRULE:FREQ=WEEKLY;INTERVAL=2\n";
-    else if (ev.recurrence === 'monthly') icsContent += "RRULE:FREQ=MONTHLY\n";
-    icsContent += "END:VEVENT\n";
-  });
-  icsContent += "END:VCALENDAR";
-
-  const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.setAttribute('download', 'allmylifeishere_calendar.ics');
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-
-  setTimeout(() => {
-    window.open('https://calendar.google.com/calendar/r/settings/export', '_blank');
-  }, 400);
 }
 
 // Render Type 4: Special Table (✨ תמונה/ציור MS Paint)
@@ -3277,64 +3532,92 @@ function setupAuthListeners() {
     });
   }
 
-  function promptGoogleFallbackLogin() {
-    const userEmail = prompt('הזן את אימייל ה-Google שלך להתחברות מהירה (Google Sign-In):', 'ziv@gmail.com');
-    if (userEmail && userEmail.trim()) {
-      const email = userEmail.trim().toLowerCase();
-      const userName = email.split('@')[0];
-      const userObj = {
-        id: 'usr_g_' + btoa(email).replace(/=/g, ''),
-        email: email,
-        name: userName.charAt(0).toUpperCase() + userName.slice(1),
-        loggedInAt: new Date().toISOString()
-      };
-      loginUserSession(userObj);
-    }
-  }
-
-  function loginUserSession(userObj) {
-    currentUser = userObj;
-    const userJsonStr = JSON.stringify(userObj);
-    localStorage.setItem('allmylifeishere_user', userJsonStr);
-    setCookie('allmylifeishere_user', userJsonStr, 365);
-
-    const rawKey = userObj.email.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
-    currentSyncKey = 'USER-' + rawKey;
-    localStorage.setItem('allmylifeishere_syncKey', currentSyncKey);
-
-    updateUserProfileUI();
-    closeAuthModal();
-
-    if (tables.length > 0) {
-      saveDataToCloud();
-    }
-    subscribeToCloudUpdates();
-    showToast(`🌐 התחברת בהצלחה עם Google, ברוך הבא ${userObj.name}!`);
-  }
-
   if (authForm) {
-    authForm.addEventListener('submit', (e) => {
+    authForm.addEventListener('submit', handleAuthSubmit);
+  }
+
+  if (authSubmitBtn) {
+    authSubmitBtn.addEventListener('click', (e) => {
       e.preventDefault();
-      const email = authEmailInput.value.trim().toLowerCase();
-      const password = authPasswordInput.value.trim();
-      const name = authNameInput ? authNameInput.value.trim() : '';
-
-      if (!email || !password) {
-        alert('אנא הזן אימייל/שם משתמש וסיסמה!');
-        return;
-      }
-
-      const displayName = name || email.split('@')[0];
-      const userObj = {
-        id: 'usr_' + btoa(email).replace(/=/g, ''),
-        email: email,
-        name: displayName,
-        loggedInAt: new Date().toISOString()
-      };
-
-      loginUserSession(userObj);
+      handleAuthSubmit(e);
     });
   }
+
+function safeBase64Encode(str) {
+  try {
+    return btoa(unescape(encodeURIComponent(str))).replace(/=/g, '');
+  } catch (e) {
+    return encodeURIComponent(str).replace(/%/g, '_');
+  }
+}
+
+function promptGoogleFallbackLogin() {
+  const userEmail = prompt('הזן את אימייל ה-Google שלך להתחברות מהירה (Google Sign-In):', 'ziv@gmail.com');
+  if (userEmail && userEmail.trim()) {
+    const email = userEmail.trim().toLowerCase();
+    const userName = email.split('@')[0];
+    const userObj = {
+      id: 'usr_g_' + safeBase64Encode(email),
+      email: email,
+      name: userName.charAt(0).toUpperCase() + userName.slice(1),
+      loggedInAt: new Date().toISOString()
+    };
+    loginUserSession(userObj);
+  }
+}
+
+function loginUserSession(userObj) {
+  currentUser = userObj;
+  try {
+    const userJsonStr = JSON.stringify(userObj);
+    localStorage.setItem('allmylifeishere_user', userJsonStr);
+    try { setCookie('allmylifeishere_user', userJsonStr, 365); } catch (e) {}
+  } catch (err) {
+    console.warn('LocalStorage save notice:', err);
+  }
+
+  const rawKey = userObj.email.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
+  currentSyncKey = 'USER-' + rawKey;
+  try {
+    localStorage.setItem('allmylifeishere_syncKey', currentSyncKey);
+  } catch (e) {}
+
+  updateUserProfileUI();
+  closeAuthModal();
+
+  if (tables.length > 0) {
+    saveDataToCloud();
+  }
+  subscribeToCloudUpdates();
+  showToast(`🌐 התחברת בהצלחה, ברוך הבא ${userObj.name}!`);
+}
+
+function handleAuthSubmit(e) {
+  if (e) e.preventDefault();
+
+  const authEmailInput = document.getElementById('authEmailInput');
+  const authPasswordInput = document.getElementById('authPasswordInput');
+  const authNameInput = document.getElementById('authNameInput');
+
+  const email = authEmailInput ? authEmailInput.value.trim().toLowerCase() : '';
+  const password = authPasswordInput ? authPasswordInput.value.trim() : '';
+  const name = authNameInput ? authNameInput.value.trim() : '';
+
+  if (!email || !password) {
+    alert('אנא הזן אימייל/שם משתמש וסיסמה!');
+    return;
+  }
+
+  const displayName = name || email.split('@')[0];
+  const userObj = {
+    id: 'usr_' + safeBase64Encode(email),
+    email: email,
+    name: displayName,
+    loggedInAt: new Date().toISOString()
+  };
+
+  loginUserSession(userObj);
+}
 
   if (logoutBtn) {
     logoutBtn.addEventListener('click', () => {
@@ -3479,6 +3762,57 @@ function renderSharedUsersList() {
     });
     container.appendChild(item);
   });
+}
+
+function exportBackupJSON() {
+  const backupData = {
+    tables: tables,
+    events: events,
+    deletedTables: deletedTables,
+    completedTasksHistory: (typeof completedTasksHistory !== 'undefined') ? completedTasksHistory : [],
+    exportedAt: new Date().toISOString(),
+    appVersion: "1.0"
+  };
+  const jsonStr = JSON.stringify(backupData, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const dateStr = new Date().toISOString().split('T')[0];
+  a.href = url;
+  a.download = `AllMyLifeIsHere_Backup_${dateStr}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('💾 קובץ הגיבוי הורד בהצלחה למכשיר שלך!');
+}
+
+function importBackupJSON(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (data && (data.tables || data.events)) {
+        saveStateToHistory();
+        if (data.tables && Array.isArray(data.tables)) tables = data.tables;
+        if (data.events && Array.isArray(data.events)) events = data.events;
+        if (data.deletedTables && Array.isArray(data.deletedTables)) deletedTables = data.deletedTables;
+        if (data.completedTasksHistory && Array.isArray(data.completedTasksHistory)) completedTasksHistory = data.completedTasksHistory;
+
+        saveStateToLocalStorage();
+        renderHeaderDays();
+        renderGridRows();
+        renderFilteredTables();
+        saveDataToCloud();
+        showToast('📂 קובץ הגיבוי נטען בהצלחה והלוחות שוחזרו!');
+      } else {
+        alert('קובץ הגיבוי אינו תקין!');
+      }
+    } catch (err) {
+      alert('שגיאה בקריאת קובץ הגיבוי!');
+    }
+  };
+  reader.readAsText(file);
 }
 
 function saveDataToCloud() {
@@ -3767,6 +4101,70 @@ function setupSyncModalListeners() {
     emergencyRecoveryBtn.addEventListener('click', () => {
       recoverAllPastBoardsFromCloudAndLocal();
     });
+  }
+
+  const exportBackupBtn = document.getElementById('exportBackupBtn');
+  if (exportBackupBtn) {
+    exportBackupBtn.addEventListener('click', exportBackupJSON);
+  }
+
+  const importBackupFileInput = document.getElementById('importBackupFileInput');
+  if (importBackupFileInput) {
+    importBackupFileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) {
+        importBackupJSON(e.target.files[0]);
+        e.target.value = '';
+      }
+    });
+  }
+
+  const connectGoogleIcalForm = document.getElementById('connectGoogleIcalForm');
+  const googleIcalUrlInput = document.getElementById('googleIcalUrlInput');
+  const clearGoogleIcalBtn = document.getElementById('clearGoogleIcalBtn');
+
+  if (googleIcalUrl) {
+    if (googleIcalUrlInput) googleIcalUrlInput.value = googleIcalUrl;
+    fetchGoogleICSFeed(googleIcalUrl);
+  }
+
+  if (connectGoogleIcalForm) {
+    connectGoogleIcalForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const url = googleIcalUrlInput.value.trim();
+      if (url) {
+        fetchGoogleICSFeed(url);
+      }
+    });
+  }
+
+  if (clearGoogleIcalBtn) {
+    clearGoogleIcalBtn.addEventListener('click', () => {
+      googleEvents = [];
+      googleIcalUrl = '';
+      localStorage.removeItem('allmylifeishere_google_ical_url');
+      if (googleIcalUrlInput) googleIcalUrlInput.value = '';
+      const statusEl = document.getElementById('googleIcalStatus');
+      if (statusEl) statusEl.classList.add('hidden');
+      clearGoogleIcalBtn.classList.add('hidden');
+      renderHeaderDays();
+      renderGridRows();
+      showToast('❌ יומן גוגל נותק בהצלחה!');
+    });
+  }
+
+  const googleIcsFileInput = document.getElementById('googleIcsFileInput');
+  if (googleIcsFileInput) {
+    googleIcsFileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) {
+        handleGoogleIcsFileUpload(e.target.files[0]);
+        e.target.value = '';
+      }
+    });
+  }
+
+  const dupGoogleBtn = document.getElementById('duplicateGoogleEventBtn');
+  if (dupGoogleBtn) {
+    dupGoogleBtn.addEventListener('click', duplicateGoogleEventToLocal);
   }
 }
 
