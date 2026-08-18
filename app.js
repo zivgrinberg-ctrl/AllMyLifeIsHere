@@ -256,7 +256,10 @@ const GRID_START_HOUR = 0; // 00:00 (24 Hours)
 const GRID_END_HOUR = 23;  // 23:00
 const SLOT_HEIGHT = 54;    // 54px per hour slot
 
-let isScheduleMinimized = (window.innerWidth <= 768);
+const isMobileDevice = window.innerWidth <= 768 || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+let isScheduleMinimized = localStorage.getItem('allmylifeishere_schedule_minimized') !== null
+  ? (localStorage.getItem('allmylifeishere_schedule_minimized') === 'true')
+  : isMobileDevice;
 
 function updateScheduleToggleUI() {
   const scheduleContainer = document.getElementById('scheduleContainer');
@@ -280,10 +283,14 @@ function updateScheduleToggleUI() {
 function initScheduleToggle() {
   const scheduleToggleBtn = document.getElementById('scheduleToggleBtn');
   if (scheduleToggleBtn) {
-    scheduleToggleBtn.addEventListener('click', () => {
+    const handleToggle = (e) => {
+      if (e) e.preventDefault();
       isScheduleMinimized = !isScheduleMinimized;
+      localStorage.setItem('allmylifeishere_schedule_minimized', isScheduleMinimized ? 'true' : 'false');
       updateScheduleToggleUI();
-    });
+    };
+
+    scheduleToggleBtn.addEventListener('click', handleToggle);
   }
   updateScheduleToggleUI();
 }

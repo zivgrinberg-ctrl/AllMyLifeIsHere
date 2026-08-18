@@ -317,37 +317,45 @@ body {
   justify-content: center;
   gap: 0.5rem;
   margin: 0 auto;
-  padding: 0.35rem 1.25rem;
+  padding: 0.6rem 1.25rem;
   background: #1e293b;
   color: #a5b4fc;
   border: none;
   border-bottom: 1px solid var(--border-color);
   width: 100%;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
-  z-index: 12;
+  z-index: 15;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.schedule-toggle-handle:hover {
+.schedule-toggle-handle:hover,
+.schedule-toggle-handle:active {
   background: #334155;
   color: #fff;
 }
 
 .schedule-container.minimized-schedule {
   margin-bottom: 1.5rem;
+  max-height: 48px;
+  overflow: hidden !important;
 }
 
 .schedule-container.minimized-schedule .grid-header,
 .schedule-container.minimized-schedule .grid-body {
   display: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  opacity: 0 !important;
 }
 
 .schedule-container.minimized-schedule .schedule-toggle-handle {
   border-bottom: none;
-  background: rgba(30, 41, 59, 0.7);
-  padding: 0.6rem 1.25rem;
+  background: rgba(30, 41, 59, 0.9);
+  padding: 0.75rem 1.25rem;
 }
 
 /* Grid Header */
