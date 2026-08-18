@@ -3533,15 +3533,31 @@ function setupAuthListeners() {
   }
 
   if (authForm) {
-    authForm.addEventListener('submit', handleAuthSubmit);
+    authForm.addEventListener('submit', (e) => {
+      if (e) e.preventDefault();
+      handleAuthSubmit();
+    });
   }
 
   if (authSubmitBtn) {
-    authSubmitBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      handleAuthSubmit(e);
-    });
+    const doSubmit = (e) => {
+      if (e) e.preventDefault();
+      handleAuthSubmit();
+    };
+    authSubmitBtn.addEventListener('click', doSubmit);
+    authSubmitBtn.addEventListener('touchend', doSubmit);
   }
+
+  [authEmailInput, authPasswordInput, authNameInput].forEach(inp => {
+    if (inp) {
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          if (e) e.preventDefault();
+          handleAuthSubmit();
+        }
+      });
+    }
+  });
 
 function safeBase64Encode(str) {
   try {
