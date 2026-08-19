@@ -3845,6 +3845,7 @@ function saveDataToCloud() {
     const boardDoc = {
       tables: JSON.parse(JSON.stringify(tables)),
       events: JSON.parse(JSON.stringify(events)),
+      deletedTables: JSON.parse(JSON.stringify(deletedTables)),
       completedTasksHistory: (typeof completedTasksHistory !== 'undefined') ? JSON.parse(JSON.stringify(completedTasksHistory)) : [],
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       lastDeviceId: myDeviceId
@@ -3870,8 +3871,30 @@ function saveDataToCloud() {
         db.collection('sharedTables').doc(t.id).set(sharedDoc, { merge: true }).catch(e => console.warn('Shared table save warning:', e));
       }
     });
-  }, 400);
+  }, 250);
 }
+
+// 100% Background Heartbeat Auto-Saver (Every 5 seconds)
+setInterval(() => {
+  if (db && currentSyncKey && !isReceivingCloudUpdate) {
+    saveDataToCloud();
+  }
+}, 5000);
+
+// Page exit / navigation auto-saver
+window.addEventListener('beforeunload', () => {
+  saveStateToLocalStorage();
+  if (db && currentSyncKey && !isReceivingCloudUpdate) {
+    try {
+      const boardDoc = {
+        tables: JSON.parse(JSON.stringify(tables)),
+        events: JSON.parse(JSON.stringify(events)),
+        deletedTables: JSON.parse(JSON.stringify(deletedTables))
+      };
+      db.collection('boards').doc(currentSyncKey).set(boardDoc, { merge: true });
+    } catch (e) {}
+  }
+});
 
 function recoverAllPastBoardsFromCloudAndLocal() {
   if (!db) return;
