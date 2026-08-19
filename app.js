@@ -3600,6 +3600,10 @@ function loginUserSession(userObj) {
   updateUserProfileUI();
   closeAuthModal();
 
+  // Fresh array state to pull cloud data cleanly
+  tables = [];
+  events = [];
+
   subscribeToCloudUpdates();
   showToast(`🌐 התחברת בהצלחה, ברוך הבא ${userObj.name}!`);
 }
@@ -3637,10 +3641,16 @@ function handleAuthSubmit(e) {
         saveStateToHistory();
         currentUser = null;
         localStorage.removeItem('allmylifeishere_user');
+        localStorage.removeItem('allmylifeishere_syncKey');
         deleteCookie('allmylifeishere_user');
+
+        currentSyncKey = 'GLOBAL-MAIN-BOARD';
+        tables = [];
+        events = [];
 
         updateUserProfileUI();
         saveStateToLocalStorage();
+        subscribeToCloudUpdates();
         openAuthModal();
         showToast('🚪 התנתקת בהצלחה מהחשבון');
       }
