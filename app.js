@@ -2168,6 +2168,8 @@ function syncCustomGridData(t) {
   }
   t.gridData = JSON.parse(JSON.stringify(t.gridData));
   saveStateToHistory();
+  saveStateToLocalStorage();
+  saveDataToCloud();
 }
 
 function renderCustomGridTableBody(t, container) {
@@ -2230,6 +2232,7 @@ function renderCustomGridTableBody(t, container) {
         const moved = t.gridData.splice(rIdx, 1)[0];
         t.gridData.splice(rIdx - 1, 0, moved);
         t.gridData = JSON.parse(JSON.stringify(t.gridData));
+        syncCustomGridData(t);
         renderFilteredTables();
       }
     });
@@ -2247,6 +2250,7 @@ function renderCustomGridTableBody(t, container) {
         const moved = t.gridData.splice(rIdx, 1)[0];
         t.gridData.splice(rIdx + 1, 0, moved);
         t.gridData = JSON.parse(JSON.stringify(t.gridData));
+        syncCustomGridData(t);
         renderFilteredTables();
       }
     });
@@ -2265,6 +2269,7 @@ function renderCustomGridTableBody(t, container) {
       saveStateToHistory();
       t.gridData.splice(rIdx, 1);
       t.gridData = JSON.parse(JSON.stringify(t.gridData));
+      syncCustomGridData(t);
       renderFilteredTables();
     });
 
@@ -2425,6 +2430,7 @@ function renderCustomGridTableBody(t, container) {
     const colsCount = (t.gridData[0] && t.gridData[0].length) ? t.gridData[0].length : 3;
     const newRow = new Array(colsCount).fill('');
     t.gridData.push(newRow);
+    syncCustomGridData(t);
     renderCustomGridTableBody(t, container);
   });
 
@@ -2437,6 +2443,7 @@ function renderCustomGridTableBody(t, container) {
     if (t.gridData.length > 1) {
       saveStateToHistory();
       t.gridData.pop();
+      syncCustomGridData(t);
       renderCustomGridTableBody(t, container);
     }
   });
@@ -2448,6 +2455,7 @@ function renderCustomGridTableBody(t, container) {
   addColBtn.addEventListener('click', () => {
     saveStateToHistory();
     t.gridData.forEach(r => r.push(''));
+    syncCustomGridData(t);
     renderCustomGridTableBody(t, container);
   });
 
@@ -2461,6 +2469,7 @@ function renderCustomGridTableBody(t, container) {
     if (t.gridData[0] && t.gridData[0].length > 1) {
       saveStateToHistory();
       t.gridData.forEach(r => r.pop());
+      syncCustomGridData(t);
       renderCustomGridTableBody(t, container);
     }
   });
