@@ -1434,7 +1434,7 @@ function renderFilteredTables() {
   } else if (currentTab === 'today') {
     filteredTbls = tables.filter(t => t.isToday);
   } else {
-    filteredTbls = tables.filter(t => t.categories && t.categories.includes(currentTab));
+    filteredTbls = tables.filter(t => !t.categories || t.categories.length === 0 || t.categories.includes(currentTab));
   }
 
   // Set Header Title & Count
@@ -1455,10 +1455,14 @@ function renderFilteredTables() {
   filteredTablesList.innerHTML = '';
 
   if (totalCount === 0) {
+    const hintMsg = (tables.length > 0)
+      ? `קיימות <strong>${tables.length} טבלאות</strong> בלשוניות אחרות. לחץ על <strong>"הכל"</strong> בסרגל העליון כדי לראות אותן!`
+      : 'לחץ על <strong>"+ הוספת טבלה"</strong> כדי ליצור תוכן חדש!';
+
     filteredTablesList.innerHTML = `
       <div class="empty-list-state">
-        <p>אין תכנים או אירועים להצגה להגדרות נבחרות אלו.</p>
-        <p style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-muted);">לחץ על <strong>"+ הוספת טבלה"</strong> או <strong>"+ הוספת אירוע"</strong> כדי ליצור תוכן חדש!</p>
+        <p>אין תכנים או אירועים בלשונית זו (${categoryNames[currentTab] || currentTab}).</p>
+        <p style="margin-top: 0.5rem; font-size: 0.9rem; color: #a5b4fc;">${hintMsg}</p>
       </div>`;
     return;
   }
@@ -4014,6 +4018,57 @@ function recoverAllPastBoardsFromCloudAndLocal() {
   });
 }
 
+function mergeTablesSmart(cloudTables, localTables, deletedIds) {
+  const tableMap = new Map();
+  const delSet = (deletedIds instanceof Set) ? deletedIds : new Set((deletedIds || []).map(d => d.id || d));
+
+  // 1. Add local tables first
+  (localTables || []).forEach(lt => {
+    if (lt && lt.id && !delSet.has(lt.id)) {
+      tableMap.set(lt.id, JSON.parse(JSON.stringify(lt)));
+    }
+  });
+
+  // 2. Merge cloud tables
+  (cloudTables || []).forEach(ct => {
+    if (!ct || !ct.id || delSet.has(ct.id)) return;
+
+    if (!tableMap.has(ct.id)) {
+      tableMap.set(ct.id, JSON.parse(JSON.stringify(ct)));
+    } else {
+      const existingLocal = tableMap.get(ct.id);
+
+      // Merge items for checkboxes
+      if (ct.type === 'checkboxes' && Array.isArray(ct.items)) {
+        const itemMap = new Map();
+        (existingLocal.items || []).forEach(item => itemMap.set(item.id, item));
+        ct.items.forEach(item => itemMap.set(item.id, item));
+        existingLocal.items = Array.from(itemMap.values());
+      }
+
+      // Merge customGrid (rows & columns)
+      if (ct.type === 'customGrid' && Array.isArray(ct.gridData)) {
+        const localGridHasData = existingLocal.gridData && existingLocal.gridData.some(r => Array.isArray(r) && r.some(c => c && String(c).trim() !== ''));
+        const cloudGridHasData = ct.gridData.some(r => Array.isArray(r) && r.some(c => c && String(c).trim() !== ''));
+        if (cloudGridHasData || !localGridHasData) {
+          existingLocal.gridData = ct.gridData;
+        }
+      }
+
+      if (ct.weeklyData) {
+        existingLocal.weeklyData = {
+          ...(existingLocal.weeklyData || {}),
+          ...ct.weeklyData
+        };
+      }
+
+      tableMap.set(ct.id, existingLocal);
+    }
+  });
+
+  return Array.from(tableMap.values());
+}
+
 function subscribeToCloudUpdates() {
   if (!db) {
     updateSyncStatusBadge('local');
@@ -4031,7 +4086,7 @@ function subscribeToCloudUpdates() {
   cloudUnsubscribe = db.collection('boards').doc(currentSyncKey).onSnapshot(snapshot => {
     if (!snapshot.exists) {
       if (tables.length > 0 || events.length > 0) {
-        saveDataToCloud();
+        saveDataToCloudDirect();
       }
       updateSyncStatusBadge('synced');
       return;
@@ -4058,22 +4113,14 @@ function subscribeToCloudUpdates() {
 
     const allDeletedIds = new Set(deletedTables.map(d => d.id));
 
-    // 2. Merge active tables safely (excluding deleted ones)
+    // 2. Merge active tables safely using mergeTablesSmart
     let shouldSyncBackMerged = false;
     if (data.tables && Array.isArray(data.tables)) {
-      const mergedTables = [];
-      data.tables.forEach(ct => {
-        if (!allDeletedIds.has(ct.id) && !mergedTables.some(mt => mt.id === ct.id)) {
-          mergedTables.push(ct);
-        }
-      });
-      tables.forEach(lt => {
-        if (!allDeletedIds.has(lt.id) && !mergedTables.some(mt => mt.id === lt.id)) {
-          mergedTables.push(lt);
-          shouldSyncBackMerged = true;
-        }
-      });
-      tables = mergedTables;
+      const merged = mergeTablesSmart(data.tables, tables, allDeletedIds);
+      if (merged.length !== tables.length || JSON.stringify(merged) !== JSON.stringify(tables)) {
+        tables = merged;
+        shouldSyncBackMerged = true;
+      }
     } else if (tables.length > 0) {
       shouldSyncBackMerged = true;
     }
