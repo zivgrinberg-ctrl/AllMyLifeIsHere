@@ -3600,10 +3600,8 @@ function loginUserSession(userObj) {
   updateUserProfileUI();
   closeAuthModal();
 
-  // Fresh array state to pull cloud data cleanly
-  tables = [];
-  events = [];
-
+  // Consolidate all local & cloud boards into this user account so no tables are ever lost
+  recoverAllPastBoardsFromCloudAndLocal();
   subscribeToCloudUpdates();
   showToast(`🌐 התחברת בהצלחה, ברוך הבא ${userObj.name}!`);
 }
