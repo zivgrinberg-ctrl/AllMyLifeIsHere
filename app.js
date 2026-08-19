@@ -3917,6 +3917,7 @@ function recoverAllPastBoardsFromCloudAndLocal() {
 
       if (recoveredTablesCount > 0 || recoveredEventsCount > 0) {
         saveStateToLocalStorage();
+        saveDataToCloud();
         renderFilteredTables();
         renderGridRows();
         renderHeaderDays();
@@ -3927,6 +3928,7 @@ function recoverAllPastBoardsFromCloudAndLocal() {
     }).catch(() => {
       if (recoveredTablesCount > 0 || recoveredEventsCount > 0) {
         saveStateToLocalStorage();
+        saveDataToCloud();
         renderFilteredTables();
         renderGridRows();
         renderHeaderDays();
@@ -3967,51 +3969,53 @@ function subscribeToCloudUpdates() {
       return;
     }
 
-    if (data.lastDeviceId === myDeviceId) {
-      updateSyncStatusBadge('synced');
-      return;
+    isReceivingCloudUpdate = true;
+
+    // 1. Merge deletedTables first so we know which tables were deleted
+    if (data.deletedTables && Array.isArray(data.deletedTables)) {
+      const mergedDel = [...deletedTables];
+      data.deletedTables.forEach(delT => {
+        if (!mergedDel.some(ld => ld.id === delT.id)) {
+          mergedDel.push(delT);
+        }
+      });
+      deletedTables = mergedDel;
     }
 
-    isReceivingCloudUpdate = true;
+    const allDeletedIds = new Set(deletedTables.map(d => d.id));
+
+    // 2. Merge active tables safely (excluding deleted ones)
     if (data.tables && Array.isArray(data.tables)) {
-      if (data.tables.length > 0) {
-        const mergedTables = [...data.tables];
-        tables.forEach(localT => {
-          if (!mergedTables.some(ct => ct.id === localT.id)) {
-            mergedTables.push(localT);
-          }
-        });
-        tables = mergedTables;
-      } else if (tables.length > 0) {
-        saveDataToCloud();
-      }
+      const mergedTables = [];
+      data.tables.forEach(ct => {
+        if (!allDeletedIds.has(ct.id) && !mergedTables.some(mt => mt.id === ct.id)) {
+          mergedTables.push(ct);
+        }
+      });
+      tables.forEach(lt => {
+        if (!allDeletedIds.has(lt.id) && !mergedTables.some(mt => mt.id === lt.id)) {
+          mergedTables.push(lt);
+        }
+      });
+      tables = mergedTables;
     }
+
+    // 3. Merge active events safely
     if (data.events && Array.isArray(data.events)) {
-      if (data.events.length > 0) {
-        const mergedEvents = [...data.events];
-        events.forEach(localEv => {
-          if (!mergedEvents.some(ce => ce.id === localEv.id)) {
-            mergedEvents.push(localEv);
-          }
-        });
-        events = mergedEvents;
-      } else if (events.length > 0) {
-        saveDataToCloud();
-      }
+      const mergedEvents = [];
+      data.events.forEach(ce => {
+        if (!mergedEvents.some(me => me.id === ce.id)) {
+          mergedEvents.push(ce);
+        }
+      });
+      events.forEach(le => {
+        if (!mergedEvents.some(me => me.id === le.id)) {
+          mergedEvents.push(le);
+        }
+      });
+      events = mergedEvents;
     }
-    if (data.deletedTables && Array.isArray(data.deletedTables)) {
-      if (data.deletedTables.length > 0) {
-        const mergedDel = [...data.deletedTables];
-        deletedTables.forEach(localDel => {
-          if (!mergedDel.some(cd => cd.id === localDel.id)) {
-            mergedDel.push(localDel);
-          }
-        });
-        deletedTables = mergedDel;
-      } else if (deletedTables.length > 0) {
-        saveDataToCloud();
-      }
-    }
+
     if (data.completedTasksHistory && typeof completedTasksHistory !== 'undefined') {
       completedTasksHistory = data.completedTasksHistory;
     }
