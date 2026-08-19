@@ -3359,15 +3359,14 @@ function initCloudSync() {
     }
   }
 
-  // Determine user sync key based on user identity or device key
+  // Determine user sync key: Default to unified 'GLOBAL-MAIN-BOARD' so ALL devices sync automatically out-of-the-box!
   if (currentUser && currentUser.email) {
-    // Generate deterministic clean cloud user key per user account
     const rawKey = currentUser.email.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
     currentSyncKey = 'USER-' + rawKey;
   } else {
     currentSyncKey = localStorage.getItem('allmylifeishere_syncKey');
-    if (!currentSyncKey) {
-      currentSyncKey = 'LIFE-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+    if (!currentSyncKey || currentSyncKey.startsWith('LIFE-')) {
+      currentSyncKey = 'GLOBAL-MAIN-BOARD';
       localStorage.setItem('allmylifeishere_syncKey', currentSyncKey);
     }
   }
@@ -3879,17 +3878,24 @@ function recoverAllPastBoardsFromCloudAndLocal() {
     snapshot.forEach(doc => {
       const data = doc.data();
       if (data) {
-        if (data.tables && Array.isArray(data.tables)) {
-          data.tables.forEach(t => {
-            if (!tables.some(existing => existing.id === t.id)) {
-              tables.push(t);
-              recoveredTablesCount++;
+        if (data.deletedTables && Array.isArray(data.deletedTables)) {
+          data.deletedTables.forEach(t => {
+            if (!deletedTables.some(existing => existing.id === t.id)) {
+              deletedTables.push(t);
             }
           });
         }
-        if (data.deletedTables && Array.isArray(data.deletedTables)) {
-          data.deletedTables.forEach(t => {
-            if (!tables.some(existing => existing.id === t.id)) {
+      }
+    });
+
+    const deletedIds = new Set(deletedTables.map(d => d.id));
+
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      if (data) {
+        if (data.tables && Array.isArray(data.tables)) {
+          data.tables.forEach(t => {
+            if (!deletedIds.has(t.id) && !tables.some(existing => existing.id === t.id)) {
               tables.push(t);
               recoveredTablesCount++;
             }
@@ -3909,7 +3915,7 @@ function recoverAllPastBoardsFromCloudAndLocal() {
     db.collection('sharedTables').get().then(sSnap => {
       sSnap.forEach(doc => {
         const t = doc.data();
-        if (t && t.id && !tables.some(existing => existing.id === t.id)) {
+        if (t && t.id && !deletedIds.has(t.id) && !tables.some(existing => existing.id === t.id)) {
           tables.push(t);
           recoveredTablesCount++;
         }
@@ -3921,7 +3927,7 @@ function recoverAllPastBoardsFromCloudAndLocal() {
         renderFilteredTables();
         renderGridRows();
         renderHeaderDays();
-        showToast(`🛡️ שוחזרו בהצלחה ${recoveredTablesCount} טבלאות מגיבוי הענן!`);
+        showToast(`🛡️ סונכרנו בהצלחה ${recoveredTablesCount} טבלאות מכל המחשבים!`);
       } else {
         showToast('🛡️ סריקת הגיבויים הושלמה!');
       }
@@ -3932,7 +3938,7 @@ function recoverAllPastBoardsFromCloudAndLocal() {
         renderFilteredTables();
         renderGridRows();
         renderHeaderDays();
-        showToast(`🛡️ שוחזרו בהצלחה ${recoveredTablesCount} טבלאות מגיבוי הענן!`);
+        showToast(`🛡️ סונכרנו בהצלחה ${recoveredTablesCount} טבלאות מכל המחשבים!`);
       }
     });
   }).catch(err => {
