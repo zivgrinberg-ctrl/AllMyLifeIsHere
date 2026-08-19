@@ -3600,9 +3600,6 @@ function loginUserSession(userObj) {
   updateUserProfileUI();
   closeAuthModal();
 
-  if (tables.length > 0) {
-    saveDataToCloud();
-  }
   subscribeToCloudUpdates();
   showToast(`🌐 התחברת בהצלחה, ברוך הבא ${userObj.name}!`);
 }
@@ -3991,6 +3988,7 @@ function subscribeToCloudUpdates() {
     const allDeletedIds = new Set(deletedTables.map(d => d.id));
 
     // 2. Merge active tables safely (excluding deleted ones)
+    let shouldSyncBackMerged = false;
     if (data.tables && Array.isArray(data.tables)) {
       const mergedTables = [];
       data.tables.forEach(ct => {
@@ -4001,9 +3999,12 @@ function subscribeToCloudUpdates() {
       tables.forEach(lt => {
         if (!allDeletedIds.has(lt.id) && !mergedTables.some(mt => mt.id === lt.id)) {
           mergedTables.push(lt);
+          shouldSyncBackMerged = true;
         }
       });
       tables = mergedTables;
+    } else if (tables.length > 0) {
+      shouldSyncBackMerged = true;
     }
 
     // 3. Merge active events safely
@@ -4017,9 +4018,12 @@ function subscribeToCloudUpdates() {
       events.forEach(le => {
         if (!mergedEvents.some(me => me.id === le.id)) {
           mergedEvents.push(le);
+          shouldSyncBackMerged = true;
         }
       });
       events = mergedEvents;
+    } else if (events.length > 0) {
+      shouldSyncBackMerged = true;
     }
 
     if (data.completedTasksHistory && typeof completedTasksHistory !== 'undefined') {
@@ -4034,6 +4038,9 @@ function subscribeToCloudUpdates() {
       renderCompletedTasksModalContent();
     }
     isReceivingCloudUpdate = false;
+    if (shouldSyncBackMerged) {
+      saveDataToCloud();
+    }
     updateSyncStatusBadge('synced');
   }, err => {
     console.warn('Firestore snapshot listener warning:', err);
