@@ -1296,6 +1296,8 @@ function handleTableFormSubmit(e) {
   }
 
   saveStateToHistory();
+  saveStateToLocalStorage();
+  saveDataToCloud();
   renderFilteredTables();
   closeTableModal();
 
@@ -3646,6 +3648,7 @@ function handleAuthSubmit(e) {
     logoutBtn.addEventListener('click', () => {
       if (confirm('האם תרצה להתנתק מהחשבון?')) {
         saveStateToHistory();
+        saveDataToCloud();
         currentUser = null;
         localStorage.removeItem('allmylifeishere_user');
         localStorage.removeItem('allmylifeishere_syncKey');
