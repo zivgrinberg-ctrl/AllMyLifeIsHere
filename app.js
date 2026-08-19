@@ -3848,40 +3848,60 @@ function importBackupJSON(file) {
   reader.readAsText(file);
 }
 
+function sanitizeForFirestore(obj) {
+  try {
+    return JSON.parse(JSON.stringify(obj, (key, value) => {
+      return value === undefined ? null : value;
+    }));
+  } catch (e) {
+    return obj;
+  }
+}
+
 function saveDataToCloudDirect() {
   clearTimeout(cloudSaveTimeout);
   saveStateToLocalStorage();
   if (!db || isReceivingCloudUpdate || !currentSyncKey) return;
 
   updateSyncStatusBadge('uploading');
-  const boardDoc = {
-    tables: JSON.parse(JSON.stringify(tables)),
-    events: JSON.parse(JSON.stringify(events)),
-    deletedTables: JSON.parse(JSON.stringify(deletedTables)),
-    completedTasksHistory: (typeof completedTasksHistory !== 'undefined') ? JSON.parse(JSON.stringify(completedTasksHistory)) : [],
-    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-    lastDeviceId: myDeviceId
-  };
+  try {
+    const timestamp = (typeof firebase !== 'undefined' && firebase.firestore && firebase.firestore.FieldValue)
+      ? firebase.firestore.FieldValue.serverTimestamp()
+      : new Date().toISOString();
 
-  db.collection('boards').doc(currentSyncKey).set(boardDoc, { merge: true })
-    .then(() => updateSyncStatusBadge('synced'))
-    .catch(err => {
-      console.warn('Cloud sync warning (saved locally):', err);
-      updateSyncStatusBadge('local');
+    const boardDoc = sanitizeForFirestore({
+      tables: tables,
+      events: events,
+      deletedTables: deletedTables,
+      completedTasksHistory: (typeof completedTasksHistory !== 'undefined' && Array.isArray(completedTasksHistory)) ? completedTasksHistory : [],
+      updatedAt: timestamp,
+      lastDeviceId: myDeviceId
     });
 
-  tables.forEach(t => {
-    if (t.sharedWith && t.sharedWith.length > 0) {
-      const sharedDoc = {
-        ...JSON.parse(JSON.stringify(t)),
-        ownerEmail: (currentUser && currentUser.email) ? currentUser.email.toLowerCase() : 'anon',
-        sharedWith: t.sharedWith.map(e => e.toLowerCase()),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        lastDeviceId: myDeviceId
-      };
-      db.collection('sharedTables').doc(t.id).set(sharedDoc, { merge: true }).catch(e => console.warn('Shared table save warning:', e));
-    }
-  });
+    db.collection('boards').doc(currentSyncKey).set(boardDoc, { merge: true })
+      .then(() => {
+        updateSyncStatusBadge('synced');
+      })
+      .catch(err => {
+        console.warn('Firestore save warning:', err);
+        updateSyncStatusBadge('local');
+      });
+
+    tables.forEach(t => {
+      if (t.sharedWith && t.sharedWith.length > 0) {
+        const sharedDoc = sanitizeForFirestore({
+          ...t,
+          ownerEmail: (currentUser && currentUser.email) ? currentUser.email.toLowerCase() : 'anon',
+          sharedWith: t.sharedWith.map(e => e.toLowerCase()),
+          updatedAt: timestamp,
+          lastDeviceId: myDeviceId
+        });
+        db.collection('sharedTables').doc(t.id).set(sharedDoc, { merge: true }).catch(e => console.warn('Shared table save warning:', e));
+      }
+    });
+  } catch (err) {
+    console.warn('Direct cloud save error:', err);
+  }
 }
 
 function saveDataToCloud() {
