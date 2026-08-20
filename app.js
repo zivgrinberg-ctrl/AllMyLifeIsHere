@@ -4116,13 +4116,13 @@ window.addEventListener('beforeunload', () => {
 });
 
 function recoverAllPastBoardsFromCloudAndLocal() {
-  if (!db) return;
+  if (!db || !currentUser || !currentSyncKey) return;
 
   let recoveredTablesCount = 0;
   let recoveredEventsCount = 0;
 
-  db.collection('boards').get().then(snapshot => {
-    snapshot.forEach(doc => {
+  db.collection('boards').doc(currentSyncKey).get().then(doc => {
+    if (doc.exists) {
       const data = restoreFromFirestoreSanitization(doc.data());
       if (data) {
         if (data.permanentlyDeletedIds && Array.isArray(data.permanentlyDeletedIds)) {
@@ -4137,20 +4137,9 @@ function recoverAllPastBoardsFromCloudAndLocal() {
             }
           });
         }
-      }
-    });
-
-    const deletedIds = new Set([
-      ...deletedTables.map(d => d.id),
-      ...permanentlyDeletedIds
-    ]);
-
-    snapshot.forEach(doc => {
-      const data = restoreFromFirestoreSanitization(doc.data());
-      if (data) {
         if (data.tables && Array.isArray(data.tables)) {
           data.tables.forEach(t => {
-            if (!deletedIds.has(t.id) && !tables.some(existing => existing.id === t.id)) {
+            if (!deletedTables.some(d => d.id === t.id) && !permanentlyDeletedIds.includes(t.id) && !tables.some(existing => existing.id === t.id)) {
               tables.push(t);
               recoveredTablesCount++;
             }
@@ -4165,39 +4154,36 @@ function recoverAllPastBoardsFromCloudAndLocal() {
           });
         }
       }
-    });
+    }
 
-    db.collection('sharedTables').get().then(sSnap => {
-      sSnap.forEach(doc => {
-        const t = restoreFromFirestoreSanitization(doc.data());
-        if (t && t.id && !deletedIds.has(t.id) && !tables.some(existing => existing.id === t.id)) {
-          tables.push(t);
-          recoveredTablesCount++;
+    const userEmail = currentUser.email ? currentUser.email.toLowerCase() : '';
+    if (userEmail) {
+      db.collection('sharedTables').where('sharedWith', 'array-contains', userEmail).get().then(sSnap => {
+        sSnap.forEach(doc => {
+          const t = restoreFromFirestoreSanitization(doc.data());
+          if (t && t.id && !deletedTables.some(d => d.id === t.id) && !permanentlyDeletedIds.includes(t.id) && !tables.some(existing => existing.id === t.id)) {
+            tables.push(t);
+            recoveredTablesCount++;
+          }
+        });
+
+        if (recoveredTablesCount > 0 || recoveredEventsCount > 0) {
+          saveStateToLocalStorage();
+          renderHeaderDays();
+          renderGridRows();
+          renderFilteredTables();
         }
+      }).catch(err => {
+        console.warn('Shared tables query notice:', err);
       });
-
-      if (recoveredTablesCount > 0 || recoveredEventsCount > 0) {
-        saveStateToLocalStorage();
-        saveDataToCloud();
-        renderFilteredTables();
-        renderGridRows();
-        renderHeaderDays();
-        showToast(`🛡️ סונכרנו בהצלחה ${recoveredTablesCount} טבלאות מכל המחשבים!`);
-      } else {
-        showToast('🛡️ סריקת הגיבויים הושלמה!');
-      }
-    }).catch(() => {
-      if (recoveredTablesCount > 0 || recoveredEventsCount > 0) {
-        saveStateToLocalStorage();
-        saveDataToCloud();
-        renderFilteredTables();
-        renderGridRows();
-        renderHeaderDays();
-        showToast(`🛡️ סונכרנו בהצלחה ${recoveredTablesCount} טבלאות מכל המחשבים!`);
-      }
-    });
+    } else if (recoveredTablesCount > 0 || recoveredEventsCount > 0) {
+      saveStateToLocalStorage();
+      renderHeaderDays();
+      renderGridRows();
+      renderFilteredTables();
+    }
   }).catch(err => {
-    console.warn('Auto-recovery query notice:', err);
+    console.warn('User board recovery notice:', err);
   });
 }
 
