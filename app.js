@@ -257,18 +257,18 @@ function saveVaultSnapshot() {
 
 function loadBackupFromLocalStorage() {
   try {
-    if (!currentUser || !currentUser.email) {
-      tables = [];
-      events = [];
-      deletedTables = [];
-      return;
-    }
+    tables = [];
+    events = [];
+    deletedTables = [];
+
+    if (!currentUser || !currentUser.email) return;
 
     const key = getUserStorageKey(currentUser.email);
     let backupStr = key ? localStorage.getItem(key) : null;
 
-    // Migration fallback for existing user data from global legacy backup key
-    if (!backupStr) {
+    // Only migrate legacy backup if the user email is primary account
+    const userEmailClean = currentUser.email.toLowerCase();
+    if (!backupStr && (userEmailClean.includes('ziv') || userEmailClean.includes('admin'))) {
       backupStr = localStorage.getItem('allmylifeishere_board_backup');
       if (backupStr && key) {
         localStorage.setItem(key, backupStr);
@@ -278,16 +278,16 @@ function loadBackupFromLocalStorage() {
     if (backupStr) {
       const backup = JSON.parse(backupStr);
       if (backup) {
-        if (backup.tables && Array.isArray(backup.tables) && backup.tables.length > 0) {
+        if (backup.tables && Array.isArray(backup.tables)) {
           tables = backup.tables;
         }
-        if (backup.events && Array.isArray(backup.events) && backup.events.length > 0) {
+        if (backup.events && Array.isArray(backup.events)) {
           events = backup.events;
         }
-        if (backup.deletedTables && Array.isArray(backup.deletedTables) && backup.deletedTables.length > 0) {
+        if (backup.deletedTables && Array.isArray(backup.deletedTables)) {
           deletedTables = backup.deletedTables;
         }
-        if (backup.permanentlyDeletedIds && Array.isArray(backup.permanentlyDeletedIds) && backup.permanentlyDeletedIds.length > 0) {
+        if (backup.permanentlyDeletedIds && Array.isArray(backup.permanentlyDeletedIds)) {
           backup.permanentlyDeletedIds.forEach(id => {
             if (!permanentlyDeletedIds.includes(id)) permanentlyDeletedIds.push(id);
           });
@@ -3717,6 +3717,18 @@ function promptGoogleFallbackLogin() {
 }
 
 function loginUserSession(userObj) {
+  if (cloudUnsubscribe) {
+    cloudUnsubscribe();
+    cloudUnsubscribe = null;
+  }
+
+  // Pure state reset so NO previous user data remains in memory
+  tables = [];
+  events = [];
+  deletedTables = [];
+  permanentlyDeletedIds = [];
+  isReceivingCloudUpdate = false;
+
   currentUser = userObj;
   try {
     const userJsonStr = JSON.stringify(userObj);
@@ -4254,9 +4266,6 @@ function subscribeToCloudUpdates() {
 
   cloudUnsubscribe = db.collection('boards').doc(currentSyncKey).onSnapshot(snapshot => {
     if (!snapshot.exists) {
-      if (tables.length > 0 || events.length > 0) {
-        saveDataToCloudDirect();
-      }
       updateSyncStatusBadge('synced');
       return;
     }
