@@ -3854,12 +3854,58 @@ function importBackupJSON(file) {
 
 function sanitizeForFirestore(obj) {
   try {
-    return JSON.parse(JSON.stringify(obj, (key, value) => {
-      return value === undefined ? null : value;
-    }));
+    const jsonStr = JSON.stringify(obj, (key, value) => {
+      if (value === undefined) return null;
+      return value;
+    });
+    const parsed = JSON.parse(jsonStr);
+
+    const convertNestedArrays = (target) => {
+      if (!target || typeof target !== 'object') return target;
+
+      if (Array.isArray(target)) {
+        return target.map(item => {
+          if (Array.isArray(item)) {
+            // Convert 2D array row to object wrapper: ["a","b"] -> { cells: ["a","b"] }
+            return { cells: item.map(subItem => convertNestedArrays(subItem)) };
+          }
+          return convertNestedArrays(item);
+        });
+      }
+
+      for (const k in target) {
+        if (Object.prototype.hasOwnProperty.call(target, k)) {
+          target[k] = convertNestedArrays(target[k]);
+        }
+      }
+      return target;
+    };
+
+    return convertNestedArrays(parsed);
   } catch (e) {
     return obj;
   }
+}
+
+function restoreFromFirestoreSanitization(obj) {
+  if (!obj || typeof obj !== 'object') return obj;
+
+  if (Array.isArray(obj)) {
+    return obj.map(item => {
+      if (item && typeof item === 'object' && Array.isArray(item.cells)) {
+        // Restore object wrapper back to 2D array row: { cells: ["a","b"] } -> ["a","b"]
+        return item.cells.map(c => restoreFromFirestoreSanitization(c));
+      }
+      return restoreFromFirestoreSanitization(item);
+    });
+  }
+
+  for (const k in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, k)) {
+      obj[k] = restoreFromFirestoreSanitization(obj[k]);
+    }
+  }
+  return obj;
 }
 
 function saveDataToCloudDirect() {
@@ -3948,7 +3994,7 @@ function recoverAllPastBoardsFromCloudAndLocal() {
 
   db.collection('boards').get().then(snapshot => {
     snapshot.forEach(doc => {
-      const data = doc.data();
+      const data = restoreFromFirestoreSanitization(doc.data());
       if (data) {
         if (data.deletedTables && Array.isArray(data.deletedTables)) {
           data.deletedTables.forEach(t => {
@@ -3963,7 +4009,7 @@ function recoverAllPastBoardsFromCloudAndLocal() {
     const deletedIds = new Set(deletedTables.map(d => d.id));
 
     snapshot.forEach(doc => {
-      const data = doc.data();
+      const data = restoreFromFirestoreSanitization(doc.data());
       if (data) {
         if (data.tables && Array.isArray(data.tables)) {
           data.tables.forEach(t => {
@@ -3986,7 +4032,7 @@ function recoverAllPastBoardsFromCloudAndLocal() {
 
     db.collection('sharedTables').get().then(sSnap => {
       sSnap.forEach(doc => {
-        const t = doc.data();
+        const t = restoreFromFirestoreSanitization(doc.data());
         if (t && t.id && !deletedIds.has(t.id) && !tables.some(existing => existing.id === t.id)) {
           tables.push(t);
           recoveredTablesCount++;
@@ -4092,12 +4138,13 @@ function subscribeToCloudUpdates() {
       return;
     }
 
-    const data = snapshot.data();
-    if (!data) {
+    const rawData = snapshot.data();
+    if (!rawData) {
       updateSyncStatusBadge('synced');
       return;
     }
 
+    const data = restoreFromFirestoreSanitization(rawData);
     isReceivingCloudUpdate = true;
 
     // 1. Merge deletedTables first so we know which tables were deleted
