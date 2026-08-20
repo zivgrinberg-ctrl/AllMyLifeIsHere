@@ -1681,19 +1681,28 @@ function renderFilteredTables() {
     });
 
     const deleteBtnEl = card.querySelector('.delete-table-btn');
-    deleteBtnEl.addEventListener('click', () => {
+    deleteBtnEl.addEventListener('click', (e) => {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
       saveStateToHistory();
       const now = new Date();
       const deletedItem = {
-        ...JSON.parse(JSON.stringify(t)),
+        ...JSON.parse(JSON.stringify(activeTableObj || t)),
+        id: t.id,
+        title: t.title,
+        type: t.type,
         deletedAtISO: formatDateISO(now),
         deletedAtDate: formatDateOptionLabel(now),
         deletedAtTime: now.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
       };
       tables = tables.filter(tbl => tbl.id !== t.id);
-      deletedTables.unshift(deletedItem);
+      if (!deletedTables.some(d => d.id === t.id)) {
+        deletedTables.unshift(deletedItem);
+      }
       renderFilteredTables();
-      saveDataToCloud();
+      saveDataToCloudDirect();
       showToast(`📦 הטבלה "${t.title}" הועברה לארכיון הטבלאות המחוקות`);
     });
 
@@ -1775,7 +1784,8 @@ function renderDeletedTablesArchiveCard() {
   const existingCard = document.getElementById('deletedTablesArchiveCard');
   if (existingCard) existingCard.remove();
 
-  if (currentTab !== 'all') return;
+  // Render on all tabs if there are deleted tables in archive, or on 'all' tab when empty
+  if (deletedTables.length === 0 && currentTab !== 'all') return;
 
   const archiveWrapper = document.createElement('div');
   archiveWrapper.id = 'deletedTablesArchiveCard';
