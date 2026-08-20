@@ -1494,14 +1494,16 @@ function renderFilteredTables() {
     filteredEvs = events.filter(ev => ev.category === currentTab);
   }
 
-  // 2. Filter Tables
+  // 2. Filter Active Tables (where isArchived is falsey and not permanently deleted)
+  const activeTables = tables.filter(t => !t.isArchived && !permanentlyDeletedIds.includes(t.id));
+
   let filteredTbls = [];
   if (currentTab === 'all') {
-    filteredTbls = [...tables];
+    filteredTbls = activeTables;
   } else if (currentTab === 'today') {
-    filteredTbls = tables.filter(t => t.isToday);
+    filteredTbls = activeTables.filter(t => t.isToday);
   } else {
-    filteredTbls = tables.filter(t => !t.categories || t.categories.length === 0 || t.categories.includes(currentTab));
+    filteredTbls = activeTables.filter(t => !t.categories || t.categories.length === 0 || t.categories.includes(currentTab));
   }
 
   // Set Header Title & Count
@@ -1677,21 +1679,11 @@ function renderFilteredTables() {
       }
       saveStateToHistory();
       const now = new Date();
-      const origIdx = tables.findIndex(tbl => tbl.id === t.id);
-      const deletedItem = {
-        ...JSON.parse(JSON.stringify(activeTableObj || t)),
-        id: t.id,
-        title: t.title,
-        type: t.type,
-        originalIndex: (origIdx !== -1) ? origIdx : tables.length,
-        deletedAtISO: formatDateISO(now),
-        deletedAtDate: formatDateOptionLabel(now),
-        deletedAtTime: now.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
-      };
-      tables = tables.filter(tbl => tbl.id !== t.id);
-      if (!deletedTables.some(d => d.id === t.id)) {
-        deletedTables.unshift(deletedItem);
-      }
+      t.isArchived = true;
+      t.deletedAtISO = formatDateISO(now);
+      t.deletedAtDate = formatDateOptionLabel(now);
+      t.deletedAtTime = now.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+
       renderFilteredTables();
       saveDataToCloudDirect();
       showToast(`📦 הטבלה "${t.title}" הועברה לארכיון הטבלאות המחוקות`);
@@ -1775,8 +1767,23 @@ function renderDeletedTablesArchiveCard() {
   const existingCard = document.getElementById('deletedTablesArchiveCard');
   if (existingCard) existingCard.remove();
 
-  // Render on all tabs if there are deleted tables in archive, or on 'all' tab when empty
-  if (deletedTables.length === 0 && currentTab !== 'all') return;
+  // Legacy migration: merge legacy deletedTables into tables as isArchived: true
+  if (typeof deletedTables !== 'undefined' && Array.isArray(deletedTables) && deletedTables.length > 0) {
+    deletedTables.forEach(delT => {
+      let existing = tables.find(tbl => tbl.id === delT.id);
+      if (!existing) {
+        delT.isArchived = true;
+        tables.push(delT);
+      } else {
+        existing.isArchived = true;
+      }
+    });
+    deletedTables = [];
+  }
+
+  const archivedTables = tables.filter(t => t.isArchived && !permanentlyDeletedIds.includes(t.id));
+
+  if (archivedTables.length === 0 && currentTab !== 'all') return;
 
   const archiveWrapper = document.createElement('div');
   archiveWrapper.id = 'deletedTablesArchiveCard';
@@ -1807,7 +1814,7 @@ function renderDeletedTablesArchiveCard() {
   toggleBtn.style.transition = 'all 0.15s ease';
 
   const arrow = isDeletedTablesArchiveExpanded ? '▴' : '▾';
-  toggleBtn.innerHTML = `<span>📦</span> <span>ארכיון (${deletedTables.length})</span> <span style="font-size:0.8rem;">${arrow}</span>`;
+  toggleBtn.innerHTML = `<span>📦</span> <span>ארכיון (${archivedTables.length})</span> <span style="font-size:0.8rem;">${arrow}</span>`;
 
   toggleBtn.addEventListener('click', () => {
     isDeletedTablesArchiveExpanded = !isDeletedTablesArchiveExpanded;
@@ -1834,7 +1841,7 @@ function renderDeletedTablesArchiveCard() {
     listContainer.style.flexDirection = 'column';
     listContainer.style.gap = '0.5rem';
 
-    if (deletedTables.length === 0) {
+    if (archivedTables.length === 0) {
       listContainer.innerHTML = `<p style="font-size:0.85rem; color:var(--text-muted); margin:0; text-align:center; padding:0.4rem 0;">אין טבלאות מחוקות בארכיון כרגע.</p>`;
     } else {
       const archiveHeader = document.createElement('div');
@@ -1849,7 +1856,7 @@ function renderDeletedTablesArchiveCard() {
       countTitle.style.fontSize = '0.85rem';
       countTitle.style.color = '#f87171';
       countTitle.style.fontWeight = '600';
-      countTitle.textContent = `טבלאות בארכיון (${deletedTables.length})`;
+      countTitle.textContent = `טבלאות בארכיון (${archivedTables.length})`;
 
       const clearAllBtn = document.createElement('button');
       clearAllBtn.type = 'button';
@@ -1859,12 +1866,12 @@ function renderDeletedTablesArchiveCard() {
       clearAllBtn.style.fontSize = '0.8rem';
       clearAllBtn.textContent = '🗑️ ריקון כל הארכיון לצמיתות';
       clearAllBtn.addEventListener('click', () => {
-        if (confirm(`האם למחוק לצמיתות את כל ${deletedTables.length} הטבלאות בארכיון? הפעולה אינה ניתנת לביטול!`)) {
+        if (confirm(`האם למחוק לצמיתות את כל ${archivedTables.length} הטבלאות בארכיון? הפעולה אינה ניתנת לביטול!`)) {
           saveStateToHistory();
-          deletedTables.forEach(t => {
+          archivedTables.forEach(t => {
             if (!permanentlyDeletedIds.includes(t.id)) permanentlyDeletedIds.push(t.id);
           });
-          deletedTables = [];
+          tables = tables.filter(t => !t.isArchived);
           renderFilteredTables();
           saveDataToCloudDirect();
           showToast('🧹 הארכיון רוקן ונמחק לצמיתות');
@@ -1875,7 +1882,7 @@ function renderDeletedTablesArchiveCard() {
       archiveHeader.appendChild(clearAllBtn);
       listCard.appendChild(archiveHeader);
 
-      deletedTables.forEach(t => {
+      archivedTables.forEach(t => {
         const itemEl = document.createElement('div');
         itemEl.className = 'completed-log-item';
         itemEl.style.justifyContent = 'space-between';
@@ -1895,20 +1902,13 @@ function renderDeletedTablesArchiveCard() {
           </div>
         `;
 
-        // Restore table to original position
+        // Restore table to original position & categories automatically
         itemEl.querySelector('.restore-tbl-btn').addEventListener('click', () => {
           saveStateToHistory();
-          deletedTables = deletedTables.filter(tbl => tbl.id !== t.id);
-
-          const restoredT = JSON.parse(JSON.stringify(t));
-          delete restoredT.deletedAtISO;
-          delete restoredT.deletedAtDate;
-          delete restoredT.deletedAtTime;
-
-          const targetIdx = (typeof t.originalIndex === 'number') ? Math.min(Math.max(0, t.originalIndex), tables.length) : tables.length;
-          delete restoredT.originalIndex;
-
-          tables.splice(targetIdx, 0, restoredT);
+          t.isArchived = false;
+          delete t.deletedAtISO;
+          delete t.deletedAtDate;
+          delete t.deletedAtTime;
           renderFilteredTables();
           saveDataToCloudDirect();
           showToast(`↩️ הטבלה "${t.title}" שוחזרה למיקומה המקורי בלוח`);
@@ -1919,7 +1919,7 @@ function renderDeletedTablesArchiveCard() {
           if (confirm(`האם למחוק לצמיתות את הטבלה "${t.title}"? הפעולה לא ניתנת לביטול!`)) {
             saveStateToHistory();
             if (!permanentlyDeletedIds.includes(t.id)) permanentlyDeletedIds.push(t.id);
-            deletedTables = deletedTables.filter(tbl => tbl.id !== t.id);
+            tables = tables.filter(tbl => tbl.id !== t.id);
             renderFilteredTables();
             saveDataToCloudDirect();
             showToast(`💥 הטבלה "${t.title}" נמחקה לצמיתות`);
