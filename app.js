@@ -4212,6 +4212,12 @@ function subscribeToCloudUpdates() {
       return;
     }
 
+    // Skip DOM re-render if snapshot originated from our own device write to prevent typing focus loss
+    if (rawData.lastDeviceId === myDeviceId) {
+      updateSyncStatusBadge('synced');
+      return;
+    }
+
     const data = restoreFromFirestoreSanitization(rawData);
     isReceivingCloudUpdate = true;
 
