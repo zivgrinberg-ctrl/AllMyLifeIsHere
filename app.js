@@ -917,7 +917,7 @@ function renderGridRows() {
 
     // Calculate overlapping & nesting for events on this day
     const dayEventsList = [];
-    const combinedEvents = currentUser ? [...events, ...googleEvents] : [];
+    const combinedEvents = [...events, ...googleEvents];
     combinedEvents.forEach(ev => {
       const bounds = getEventBoundsForDate(ev, dateISO);
       if (!bounds) return;
@@ -1519,18 +1519,7 @@ function renderFilteredTables() {
   const totalCount = filteredTbls.length + filteredEvs.length;
   filteredListCount.textContent = `${totalCount} פריטים`;
 
-  if (!currentUser) {
-    filteredListTitle.textContent = 'תכנים';
-    filteredListCount.textContent = '0 פריטים';
-    filteredTablesList.innerHTML = `
-      <div class="empty-list-state" style="text-align: center; padding: 3rem 1.5rem; background: rgba(15, 23, 42, 0.65); border: 1px dashed rgba(99, 102, 241, 0.35); border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
-        <span style="font-size: 3rem; display: block; margin-bottom: 0.75rem;">🔒</span>
-        <h3 style="margin: 0.5rem 0; color: #f8fafc; font-size: 1.3rem; font-weight: 700;">לוח נקי (מצב אורח / מנותק)</h3>
-        <p style="color: #94a3b8; font-size: 0.95rem; margin-bottom: 1.5rem; max-width: 420px; margin-left: auto; margin-right: auto; line-height: 1.5;">התחבר לחשבונך כדי לצפות בטבלאות, במשימות ובאירועים השמורים שלך באופן מאובטח.</p>
-        <button type="button" class="btn btn-primary" onclick="openAuthModal()" style="font-size: 1rem; padding: 0.7rem 1.8rem; border-radius: 24px; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);">🔑 התחברות לחשבון</button>
-      </div>`;
-    return;
-  }
+  filteredTablesList.innerHTML = '';
 
   if (totalCount === 0) {
     const hintMsg = (tables.length > 0)
