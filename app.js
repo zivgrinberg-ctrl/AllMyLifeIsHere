@@ -3,6 +3,7 @@ let currentWeekStart = getSunday(new Date());
 let events = []; // STRICT: Empty initial state with zero dummy data
 let tables = []; // STRICT: Empty initial state for tables
 let deletedTables = []; // Deleted Tables Archive
+let permanentlyDeletedIds = []; // Registry of permanently deleted table IDs to prevent resurrection
 let editingEventId = null;
 let editingTableId = null;
 let currentTab = 'all'; // Single active tab: 'all' | 'today' | 'life' | 'work' | 'fun'
@@ -216,7 +217,7 @@ function saveStateToHistory() {
 
 function saveStateToLocalStorage() {
   try {
-    localStorage.setItem('allmylifeishere_board_backup', JSON.stringify({ tables, events, deletedTables }));
+    localStorage.setItem('allmylifeishere_board_backup', JSON.stringify({ tables, events, deletedTables, permanentlyDeletedIds }));
     saveVaultSnapshot();
   } catch (e) {
     console.warn('LocalStorage save backup notice:', e);
@@ -232,7 +233,8 @@ function saveVaultSnapshot() {
       timestamp: new Date().toISOString(),
       tables: JSON.parse(JSON.stringify(tables)),
       events: JSON.parse(JSON.stringify(events)),
-      deletedTables: JSON.parse(JSON.stringify(deletedTables))
+      deletedTables: JSON.parse(JSON.stringify(deletedTables)),
+      permanentlyDeletedIds: JSON.parse(JSON.stringify(permanentlyDeletedIds))
     };
     if (vault.length > 0 && JSON.stringify(vault[0].tables) === JSON.stringify(newSnapshot.tables)) return;
     vault.unshift(newSnapshot);
@@ -257,6 +259,11 @@ function loadBackupFromLocalStorage() {
         }
         if (backup.deletedTables && Array.isArray(backup.deletedTables) && backup.deletedTables.length > 0) {
           if (deletedTables.length === 0) deletedTables = backup.deletedTables;
+        }
+        if (backup.permanentlyDeletedIds && Array.isArray(backup.permanentlyDeletedIds) && backup.permanentlyDeletedIds.length > 0) {
+          backup.permanentlyDeletedIds.forEach(id => {
+            if (!permanentlyDeletedIds.includes(id)) permanentlyDeletedIds.push(id);
+          });
         }
       }
     }
@@ -1741,6 +1748,44 @@ function renderDeletedTablesArchiveCard() {
     if (deletedTables.length === 0) {
       listContainer.innerHTML = `<p style="font-size:0.85rem; color:var(--text-muted); margin:0; text-align:center; padding:0.4rem 0;">אין טבלאות מחוקות בארכיון כרגע.</p>`;
     } else {
+      const archiveHeader = document.createElement('div');
+      archiveHeader.style.display = 'flex';
+      archiveHeader.style.justifyContent = 'space-between';
+      archiveHeader.style.alignItems = 'center';
+      archiveHeader.style.marginBottom = '0.75rem';
+      archiveHeader.style.paddingBottom = '0.5rem';
+      archiveHeader.style.borderBottom = '1px dashed rgba(239, 68, 68, 0.3)';
+
+      const countTitle = document.createElement('span');
+      countTitle.style.fontSize = '0.85rem';
+      countTitle.style.color = '#f87171';
+      countTitle.style.fontWeight = '600';
+      countTitle.textContent = `טבלאות בארכיון (${deletedTables.length})`;
+
+      const clearAllBtn = document.createElement('button');
+      clearAllBtn.type = 'button';
+      clearAllBtn.className = 'btn btn-sm btn-secondary';
+      clearAllBtn.style.color = '#ef4444';
+      clearAllBtn.style.borderColor = 'rgba(239, 68, 68, 0.5)';
+      clearAllBtn.style.fontSize = '0.8rem';
+      clearAllBtn.textContent = '🗑️ ריקון כל הארכיון לצמיתות';
+      clearAllBtn.addEventListener('click', () => {
+        if (confirm(`האם למחוק לצמיתות את כל ${deletedTables.length} הטבלאות בארכיון? הפעולה אינה ניתנת לביטול!`)) {
+          saveStateToHistory();
+          deletedTables.forEach(t => {
+            if (!permanentlyDeletedIds.includes(t.id)) permanentlyDeletedIds.push(t.id);
+          });
+          deletedTables = [];
+          renderFilteredTables();
+          saveDataToCloudDirect();
+          showToast('🧹 הארכיון רוקן ונמחק לצמיתות');
+        }
+      });
+
+      archiveHeader.appendChild(countTitle);
+      archiveHeader.appendChild(clearAllBtn);
+      listCard.appendChild(archiveHeader);
+
       deletedTables.forEach(t => {
         const itemEl = document.createElement('div');
         itemEl.className = 'completed-log-item';
@@ -1767,7 +1812,7 @@ function renderDeletedTablesArchiveCard() {
           deletedTables = deletedTables.filter(tbl => tbl.id !== t.id);
           tables.push(t);
           renderFilteredTables();
-          saveDataToCloud();
+          saveDataToCloudDirect();
           showToast(`↩️ הטבלה "${t.title}" שוחזרה ללוח`);
         });
 
@@ -1775,9 +1820,10 @@ function renderDeletedTablesArchiveCard() {
         itemEl.querySelector('.permanent-del-tbl-btn').addEventListener('click', () => {
           if (confirm(`האם למחוק לצמיתות את הטבלה "${t.title}"? הפעולה לא ניתנת לביטול!`)) {
             saveStateToHistory();
+            if (!permanentlyDeletedIds.includes(t.id)) permanentlyDeletedIds.push(t.id);
             deletedTables = deletedTables.filter(tbl => tbl.id !== t.id);
             renderFilteredTables();
-            saveDataToCloud();
+            saveDataToCloudDirect();
             showToast(`💥 הטבלה "${t.title}" נמחקה לצמיתות`);
           }
         });
@@ -3923,6 +3969,7 @@ function saveDataToCloudDirect() {
       tables: tables,
       events: events,
       deletedTables: deletedTables,
+      permanentlyDeletedIds: permanentlyDeletedIds,
       completedTasksHistory: (typeof completedTasksHistory !== 'undefined' && Array.isArray(completedTasksHistory)) ? completedTasksHistory : [],
       updatedAt: timestamp,
       lastDeviceId: myDeviceId
@@ -3996,9 +4043,14 @@ function recoverAllPastBoardsFromCloudAndLocal() {
     snapshot.forEach(doc => {
       const data = restoreFromFirestoreSanitization(doc.data());
       if (data) {
+        if (data.permanentlyDeletedIds && Array.isArray(data.permanentlyDeletedIds)) {
+          data.permanentlyDeletedIds.forEach(id => {
+            if (!permanentlyDeletedIds.includes(id)) permanentlyDeletedIds.push(id);
+          });
+        }
         if (data.deletedTables && Array.isArray(data.deletedTables)) {
           data.deletedTables.forEach(t => {
-            if (!deletedTables.some(existing => existing.id === t.id)) {
+            if (!permanentlyDeletedIds.includes(t.id) && !deletedTables.some(existing => existing.id === t.id)) {
               deletedTables.push(t);
             }
           });
@@ -4006,7 +4058,10 @@ function recoverAllPastBoardsFromCloudAndLocal() {
       }
     });
 
-    const deletedIds = new Set(deletedTables.map(d => d.id));
+    const deletedIds = new Set([
+      ...deletedTables.map(d => d.id),
+      ...permanentlyDeletedIds
+    ]);
 
     snapshot.forEach(doc => {
       const data = restoreFromFirestoreSanitization(doc.data());
@@ -4147,18 +4202,27 @@ function subscribeToCloudUpdates() {
     const data = restoreFromFirestoreSanitization(rawData);
     isReceivingCloudUpdate = true;
 
-    // 1. Merge deletedTables first so we know which tables were deleted
+    // 1. Merge deletedTables & permanentlyDeletedIds first
+    if (data.permanentlyDeletedIds && Array.isArray(data.permanentlyDeletedIds)) {
+      data.permanentlyDeletedIds.forEach(id => {
+        if (!permanentlyDeletedIds.includes(id)) permanentlyDeletedIds.push(id);
+      });
+    }
+
     if (data.deletedTables && Array.isArray(data.deletedTables)) {
       const mergedDel = [...deletedTables];
       data.deletedTables.forEach(delT => {
-        if (!mergedDel.some(ld => ld.id === delT.id)) {
+        if (!permanentlyDeletedIds.includes(delT.id) && !mergedDel.some(ld => ld.id === delT.id)) {
           mergedDel.push(delT);
         }
       });
-      deletedTables = mergedDel;
+      deletedTables = mergedDel.filter(d => !permanentlyDeletedIds.includes(d.id));
     }
 
-    const allDeletedIds = new Set(deletedTables.map(d => d.id));
+    const allDeletedIds = new Set([
+      ...deletedTables.map(d => d.id),
+      ...permanentlyDeletedIds
+    ]);
 
     // 2. Merge active tables safely using mergeTablesSmart
     let shouldSyncBackMerged = false;
