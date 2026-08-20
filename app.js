@@ -215,9 +215,19 @@ function saveStateToHistory() {
   }
 }
 
+function getUserStorageKey(email) {
+  if (!email) return null;
+  const rawKey = email.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
+  return `allmylifeishere_board_backup_${rawKey}`;
+}
+
 function saveStateToLocalStorage() {
   try {
-    localStorage.setItem('allmylifeishere_board_backup', JSON.stringify({ tables, events, deletedTables, permanentlyDeletedIds }));
+    if (!currentUser || !currentUser.email) return;
+    const key = getUserStorageKey(currentUser.email);
+    if (key) {
+      localStorage.setItem(key, JSON.stringify({ tables, events, deletedTables, permanentlyDeletedIds }));
+    }
     saveVaultSnapshot();
   } catch (e) {
     console.warn('LocalStorage save backup notice:', e);
@@ -225,7 +235,7 @@ function saveStateToLocalStorage() {
 }
 
 function saveVaultSnapshot() {
-  if (tables.length === 0 && events.length === 0) return;
+  if (!currentUser || !currentUser.email || (tables.length === 0 && events.length === 0)) return;
   try {
     const vaultStr = localStorage.getItem('allmylifeishere_history_vault');
     let vault = vaultStr ? JSON.parse(vaultStr) : [];
@@ -247,18 +257,35 @@ function saveVaultSnapshot() {
 
 function loadBackupFromLocalStorage() {
   try {
-    const backupStr = localStorage.getItem('allmylifeishere_board_backup');
+    if (!currentUser || !currentUser.email) {
+      tables = [];
+      events = [];
+      deletedTables = [];
+      return;
+    }
+
+    const key = getUserStorageKey(currentUser.email);
+    let backupStr = key ? localStorage.getItem(key) : null;
+
+    // Migration fallback for existing user data from global legacy backup key
+    if (!backupStr) {
+      backupStr = localStorage.getItem('allmylifeishere_board_backup');
+      if (backupStr && key) {
+        localStorage.setItem(key, backupStr);
+      }
+    }
+
     if (backupStr) {
       const backup = JSON.parse(backupStr);
       if (backup) {
         if (backup.tables && Array.isArray(backup.tables) && backup.tables.length > 0) {
-          if (tables.length === 0) tables = backup.tables;
+          tables = backup.tables;
         }
         if (backup.events && Array.isArray(backup.events) && backup.events.length > 0) {
-          if (events.length === 0) events = backup.events;
+          events = backup.events;
         }
         if (backup.deletedTables && Array.isArray(backup.deletedTables) && backup.deletedTables.length > 0) {
-          if (deletedTables.length === 0) deletedTables = backup.deletedTables;
+          deletedTables = backup.deletedTables;
         }
         if (backup.permanentlyDeletedIds && Array.isArray(backup.permanentlyDeletedIds) && backup.permanentlyDeletedIds.length > 0) {
           backup.permanentlyDeletedIds.forEach(id => {
@@ -502,7 +529,27 @@ function initScheduleToggle() {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
-  loadBackupFromLocalStorage();
+  const savedUserStr = localStorage.getItem('allmylifeishere_user') || getCookie('allmylifeishere_user');
+  if (savedUserStr) {
+    try {
+      currentUser = JSON.parse(savedUserStr);
+    } catch (e) {
+      currentUser = null;
+    }
+  }
+
+  if (currentUser && currentUser.email) {
+    const rawKey = currentUser.email.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
+    currentSyncKey = 'USER-' + rawKey;
+    loadBackupFromLocalStorage();
+  } else {
+    currentUser = null;
+    currentSyncKey = null;
+    tables = [];
+    events = [];
+    deletedTables = [];
+  }
+
   populateDateDropdowns();
   populateTimeDropdowns();
   renderHeaderDays();
@@ -870,7 +917,7 @@ function renderGridRows() {
 
     // Calculate overlapping & nesting for events on this day
     const dayEventsList = [];
-    const combinedEvents = [...events, ...googleEvents];
+    const combinedEvents = currentUser ? [...events, ...googleEvents] : [];
     combinedEvents.forEach(ev => {
       const bounds = getEventBoundsForDate(ev, dateISO);
       if (!bounds) return;
@@ -1472,7 +1519,18 @@ function renderFilteredTables() {
   const totalCount = filteredTbls.length + filteredEvs.length;
   filteredListCount.textContent = `${totalCount} פריטים`;
 
-  filteredTablesList.innerHTML = '';
+  if (!currentUser) {
+    filteredListTitle.textContent = 'תכנים';
+    filteredListCount.textContent = '0 פריטים';
+    filteredTablesList.innerHTML = `
+      <div class="empty-list-state" style="text-align: center; padding: 3rem 1.5rem; background: rgba(15, 23, 42, 0.65); border: 1px dashed rgba(99, 102, 241, 0.35); border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
+        <span style="font-size: 3rem; display: block; margin-bottom: 0.75rem;">🔒</span>
+        <h3 style="margin: 0.5rem 0; color: #f8fafc; font-size: 1.3rem; font-weight: 700;">לוח נקי (מצב אורח / מנותק)</h3>
+        <p style="color: #94a3b8; font-size: 0.95rem; margin-bottom: 1.5rem; max-width: 420px; margin-left: auto; margin-right: auto; line-height: 1.5;">התחבר לחשבונך כדי לצפות בטבלאות, במשימות ובאירועים השמורים שלך באופן מאובטח.</p>
+        <button type="button" class="btn btn-primary" onclick="openAuthModal()" style="font-size: 1rem; padding: 0.7rem 1.8rem; border-radius: 24px; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);">🔑 התחברות לחשבון</button>
+      </div>`;
+    return;
+  }
 
   if (totalCount === 0) {
     const hintMsg = (tables.length > 0)
@@ -3433,16 +3491,15 @@ function initCloudSync() {
     }
   }
 
-  // Determine user sync key: Default to unified 'GLOBAL-MAIN-BOARD' so ALL devices sync automatically out-of-the-box!
+  // Determine user sync key
   if (currentUser && currentUser.email) {
     const rawKey = currentUser.email.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
     currentSyncKey = 'USER-' + rawKey;
   } else {
-    currentSyncKey = localStorage.getItem('allmylifeishere_syncKey');
-    if (!currentSyncKey || currentSyncKey.startsWith('LIFE-')) {
-      currentSyncKey = 'GLOBAL-MAIN-BOARD';
-      localStorage.setItem('allmylifeishere_syncKey', currentSyncKey);
-    }
+    currentSyncKey = null;
+    tables = [];
+    events = [];
+    deletedTables = [];
   }
 
   // Initialize Firebase Firestore & Storage if compat SDK is loaded
@@ -3493,12 +3550,16 @@ function initCloudSync() {
   setupSyncModalListeners();
   setupShareModalListeners();
 
-  if (currentUser) {
-    updateUserProfileUI();
-  }
+  updateUserProfileUI();
 
-  // ALWAYS subscribe to cloud updates for 100% sync reliability on GitHub Pages
-  subscribeToCloudUpdates();
+  if (currentUser && currentSyncKey) {
+    loadBackupFromLocalStorage();
+    subscribeToCloudUpdates();
+  } else {
+    updateSyncStatusBadge('local');
+    renderFilteredTables();
+    renderGridRows();
+  }
 }
 
 function updateUserProfileUI() {
@@ -3674,9 +3735,12 @@ function loginUserSession(userObj) {
   updateUserProfileUI();
   closeAuthModal();
 
-  // Consolidate all local & cloud boards into this user account so no tables are ever lost
+  loadBackupFromLocalStorage();
   recoverAllPastBoardsFromCloudAndLocal();
   subscribeToCloudUpdates();
+  renderHeaderDays();
+  renderGridRows();
+  renderFilteredTables();
   showToast(`🌐 התחברת בהצלחה, ברוך הבא ${userObj.name}!`);
 }
 
@@ -3713,18 +3777,23 @@ function handleAuthSubmit(e) {
         saveStateToHistory();
         saveDataToCloudDirect();
         clearTimeout(cloudSaveTimeout);
+        if (cloudUnsubscribe) cloudUnsubscribe();
+
         currentUser = null;
+        currentSyncKey = null;
         localStorage.removeItem('allmylifeishere_user');
         localStorage.removeItem('allmylifeishere_syncKey');
         deleteCookie('allmylifeishere_user');
 
-        currentSyncKey = 'GLOBAL-MAIN-BOARD';
         tables = [];
         events = [];
+        deletedTables = [];
 
         updateUserProfileUI();
-        saveStateToLocalStorage();
-        subscribeToCloudUpdates();
+        updateSyncStatusBadge('local');
+        renderHeaderDays();
+        renderGridRows();
+        renderFilteredTables();
         openAuthModal();
         showToast('🚪 התנתקת בהצלחה מהחשבון');
       }
