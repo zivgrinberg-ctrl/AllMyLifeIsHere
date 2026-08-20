@@ -1677,11 +1677,13 @@ function renderFilteredTables() {
       }
       saveStateToHistory();
       const now = new Date();
+      const origIdx = tables.findIndex(tbl => tbl.id === t.id);
       const deletedItem = {
         ...JSON.parse(JSON.stringify(activeTableObj || t)),
         id: t.id,
         title: t.title,
         type: t.type,
+        originalIndex: (origIdx !== -1) ? origIdx : tables.length,
         deletedAtISO: formatDateISO(now),
         deletedAtDate: formatDateOptionLabel(now),
         deletedAtTime: now.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
@@ -1893,14 +1895,23 @@ function renderDeletedTablesArchiveCard() {
           </div>
         `;
 
-        // Restore table
+        // Restore table to original position
         itemEl.querySelector('.restore-tbl-btn').addEventListener('click', () => {
           saveStateToHistory();
           deletedTables = deletedTables.filter(tbl => tbl.id !== t.id);
-          tables.push(t);
+
+          const restoredT = JSON.parse(JSON.stringify(t));
+          delete restoredT.deletedAtISO;
+          delete restoredT.deletedAtDate;
+          delete restoredT.deletedAtTime;
+
+          const targetIdx = (typeof t.originalIndex === 'number') ? Math.min(Math.max(0, t.originalIndex), tables.length) : tables.length;
+          delete restoredT.originalIndex;
+
+          tables.splice(targetIdx, 0, restoredT);
           renderFilteredTables();
           saveDataToCloudDirect();
-          showToast(`↩️ הטבלה "${t.title}" שוחזרה ללוח`);
+          showToast(`↩️ הטבלה "${t.title}" שוחזרה למיקומה המקורי בלוח`);
         });
 
         // Permanent delete
