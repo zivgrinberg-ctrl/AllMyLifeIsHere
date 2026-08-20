@@ -1421,6 +1421,19 @@ function getWeeklyArchiveData(t) {
 
 // Render Filtered Tables & Events List below Schedule
 function renderFilteredTables() {
+  const activeEl = document.activeElement;
+  let activeFocusInfo = null;
+  if (activeEl && activeEl.dataset && activeEl.dataset.tableId) {
+    activeFocusInfo = {
+      tableId: activeEl.dataset.tableId,
+      rIdx: activeEl.dataset.rIdx,
+      cIdx: activeEl.dataset.cIdx,
+      itemId: activeEl.dataset.itemId,
+      selStart: activeEl.selectionStart,
+      selEnd: activeEl.selectionEnd
+    };
+  }
+
   checkAndResetTables();
   const todayISO = formatDateISO(new Date());
 
@@ -1678,6 +1691,23 @@ function renderFilteredTables() {
   // Append Completed Tasks Log and Deleted Tables Archive
   renderCompletedTasksLogCard();
   renderDeletedTablesArchiveCard();
+
+  if (activeFocusInfo) {
+    let focusTa = null;
+    if (activeFocusInfo.rIdx !== undefined && activeFocusInfo.cIdx !== undefined) {
+      focusTa = document.querySelector(`textarea[data-table-id="${activeFocusInfo.tableId}"][data-r-idx="${activeFocusInfo.rIdx}"][data-c-idx="${activeFocusInfo.cIdx}"]`);
+    } else if (activeFocusInfo.itemId !== undefined) {
+      focusTa = document.querySelector(`input[data-table-id="${activeFocusInfo.tableId}"][data-item-id="${activeFocusInfo.itemId}"]`);
+    }
+    if (focusTa) {
+      focusTa.focus();
+      try {
+        if (typeof activeFocusInfo.selStart === 'number' && typeof activeFocusInfo.selEnd === 'number') {
+          focusTa.setSelectionRange(activeFocusInfo.selStart, activeFocusInfo.selEnd);
+        }
+      } catch (e) {}
+    }
+  }
 }
 
 let isDeletedTablesArchiveExpanded = false;
@@ -2085,6 +2115,8 @@ function renderCheckboxTableBody(t, container) {
     textInput.type = 'text';
     textInput.value = item.text;
     textInput.placeholder = '';
+    textInput.dataset.tableId = t.id;
+    textInput.dataset.itemId = item.id;
     textInput.addEventListener('input', () => {
       item.text = textInput.value;
     });
@@ -2338,6 +2370,9 @@ function renderCustomGridTableBody(t, container) {
       textarea.placeholder = '';
       textarea.rows = 1;
       textarea.className = 'grid-cell-textarea';
+      textarea.dataset.tableId = t.id;
+      textarea.dataset.rIdx = rIdx;
+      textarea.dataset.cIdx = cIdx;
 
       const adjustHeight = () => {
         textarea.style.height = 'auto';
@@ -2348,7 +2383,12 @@ function renderCustomGridTableBody(t, container) {
         adjustHeight();
         if (!t.gridData[rIdx]) t.gridData[rIdx] = [];
         t.gridData[rIdx][cIdx] = textarea.value;
-        syncCustomGridData(t);
+        const rootT = tables.find(tbl => tbl.id === t.id);
+        if (rootT && rootT.gridData && rootT.gridData[rIdx]) {
+          rootT.gridData[rIdx][cIdx] = textarea.value;
+        }
+        saveStateToLocalStorage();
+        saveDataToCloud();
       });
 
       // Smart multi-cell clipboard paste
@@ -2388,69 +2428,42 @@ function renderCustomGridTableBody(t, container) {
         if (e.key === 'Enter') {
           if (!e.shiftKey) {
             e.preventDefault();
-            const nextRowTr = tbody.children[rIdx + 1];
-            if (nextRowTr) {
-              const nextTd = nextRowTr.children[cIdx + 1];
-              if (nextTd) {
-                const nextTa = nextTd.querySelector('textarea');
-                if (nextTa) nextTa.focus();
-              }
-            } else {
-              textarea.blur();
-            }
+            const nextTa = container.querySelector(`textarea[data-table-id="${t.id}"][data-r-idx="${rIdx + 1}"][data-c-idx="${cIdx}"]`);
+            if (nextTa) nextTa.focus();
+            else textarea.blur();
           } else {
             setTimeout(adjustHeight, 0);
           }
         } else if (e.key === 'ArrowDown') {
-          const isAtBottom = textarea.selectionStart === textarea.value.length || !textarea.value.includes('\n');
-          if (isAtBottom) {
-            const nextRowTr = tbody.children[rIdx + 1];
-            if (nextRowTr) {
-              const nextTd = nextRowTr.children[cIdx + 1];
-              if (nextTd) {
-                const nextTa = nextTd.querySelector('textarea');
-                if (nextTa) {
-                  e.preventDefault();
-                  nextTa.focus();
-                }
-              }
+          if (textarea.selectionStart === textarea.value.length || !textarea.value.includes('\n')) {
+            const nextTa = container.querySelector(`textarea[data-table-id="${t.id}"][data-r-idx="${rIdx + 1}"][data-c-idx="${cIdx}"]`);
+            if (nextTa) {
+              e.preventDefault();
+              nextTa.focus();
             }
           }
         } else if (e.key === 'ArrowUp') {
-          const isAtTop = textarea.selectionStart === 0 || !textarea.value.includes('\n');
-          if (isAtTop) {
-            const prevRowTr = tbody.children[rIdx - 1];
-            if (prevRowTr) {
-              const prevTd = prevRowTr.children[cIdx + 1];
-              if (prevTd) {
-                const prevTa = prevTd.querySelector('textarea');
-                if (prevTa) {
-                  e.preventDefault();
-                  prevTa.focus();
-                }
-              }
+          if (textarea.selectionStart === 0 || !textarea.value.includes('\n')) {
+            const prevTa = container.querySelector(`textarea[data-table-id="${t.id}"][data-r-idx="${rIdx - 1}"][data-c-idx="${cIdx}"]`);
+            if (prevTa) {
+              e.preventDefault();
+              prevTa.focus();
             }
           }
         } else if (e.key === 'ArrowLeft') {
           if (textarea.selectionStart === textarea.value.length) {
-            const nextTd = tr.children[cIdx + 2];
-            if (nextTd) {
-              const nextTa = nextTd.querySelector('textarea');
-              if (nextTa) {
-                e.preventDefault();
-                nextTa.focus();
-              }
+            const nextTa = container.querySelector(`textarea[data-table-id="${t.id}"][data-r-idx="${rIdx}"][data-c-idx="${cIdx + 1}"]`);
+            if (nextTa) {
+              e.preventDefault();
+              nextTa.focus();
             }
           }
         } else if (e.key === 'ArrowRight') {
           if (textarea.selectionStart === 0) {
-            const prevTd = tr.children[cIdx];
-            if (prevTd) {
-              const prevTa = prevTd.querySelector('textarea');
-              if (prevTa) {
-                e.preventDefault();
-                prevTa.focus();
-              }
+            const prevTa = container.querySelector(`textarea[data-table-id="${t.id}"][data-r-idx="${rIdx}"][data-c-idx="${cIdx - 1}"]`);
+            if (prevTa) {
+              e.preventDefault();
+              prevTa.focus();
             }
           }
         }
