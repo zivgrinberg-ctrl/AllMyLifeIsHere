@@ -4181,8 +4181,6 @@ function recoverAllPastBoardsFromCloudAndLocal() {
               if (!existing) {
                 t.isArchived = true;
                 tables.push(t);
-              } else {
-                existing.isArchived = true;
               }
             }
           });
@@ -4338,8 +4336,6 @@ function subscribeToCloudUpdates() {
           if (!existing) {
             delT.isArchived = true;
             tables.push(delT);
-          } else {
-            existing.isArchived = true;
           }
         }
       });
