@@ -1905,13 +1905,35 @@ function renderDeletedTablesArchiveCard() {
         // Restore table to original position & categories automatically
         itemEl.querySelector('.restore-tbl-btn').addEventListener('click', () => {
           saveStateToHistory();
+          permanentlyDeletedIds = permanentlyDeletedIds.filter(id => id !== t.id);
           t.isArchived = false;
-          delete t.deletedAtISO;
-          delete t.deletedAtDate;
-          delete t.deletedAtTime;
+
+          tables.forEach(tbl => {
+            if (tbl.id === t.id) {
+              tbl.isArchived = false;
+              delete tbl.deletedAtISO;
+              delete tbl.deletedAtDate;
+              delete tbl.deletedAtTime;
+            }
+          });
+
+          // Ensure table is visible in currentTab view; if filtered out by category, switch to 'all' tab
+          const activeTableMatch = tables.find(tbl => tbl.id === t.id);
+          if (activeTableMatch) {
+            const matchesCurrentTab = (currentTab === 'all') ||
+              (currentTab === 'today' && activeTableMatch.isToday) ||
+              (activeTableMatch.categories && activeTableMatch.categories.includes(currentTab));
+            if (!matchesCurrentTab) {
+              currentTab = 'all';
+              document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.tab === 'all');
+              });
+            }
+          }
+
           renderFilteredTables();
           saveDataToCloudDirect();
-          showToast(`↩️ הטבלה "${t.title}" שוחזרה למיקומה המקורי בלוח`);
+          showToast(`↩️ הטבלה "${t.title}" שוחזרה בהצלחה למיקומה המקורי בלוח`);
         });
 
         // Permanent delete
