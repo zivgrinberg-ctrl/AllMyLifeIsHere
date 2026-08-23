@@ -4154,14 +4154,20 @@ function recoverAllPastBoardsFromCloudAndLocal() {
         }
         if (data.deletedTables && Array.isArray(data.deletedTables)) {
           data.deletedTables.forEach(t => {
-            if (!permanentlyDeletedIds.includes(t.id) && !deletedTables.some(existing => existing.id === t.id)) {
-              deletedTables.push(t);
+            if (!permanentlyDeletedIds.includes(t.id)) {
+              let existing = tables.find(tbl => tbl.id === t.id);
+              if (!existing) {
+                t.isArchived = true;
+                tables.push(t);
+              } else {
+                existing.isArchived = true;
+              }
             }
           });
         }
         if (data.tables && Array.isArray(data.tables)) {
           data.tables.forEach(t => {
-            if (!deletedTables.some(d => d.id === t.id) && !permanentlyDeletedIds.includes(t.id) && !tables.some(existing => existing.id === t.id)) {
+            if (!permanentlyDeletedIds.includes(t.id) && !tables.some(existing => existing.id === t.id)) {
               tables.push(t);
               recoveredTablesCount++;
             }
@@ -4295,27 +4301,29 @@ function subscribeToCloudUpdates() {
     const data = restoreFromFirestoreSanitization(rawData);
     isReceivingCloudUpdate = true;
 
-    // 1. Merge deletedTables & permanentlyDeletedIds first
+    // 1. Permanently deleted IDs
     if (data.permanentlyDeletedIds && Array.isArray(data.permanentlyDeletedIds)) {
       data.permanentlyDeletedIds.forEach(id => {
         if (!permanentlyDeletedIds.includes(id)) permanentlyDeletedIds.push(id);
       });
     }
 
+    // Legacy migration: convert any incoming cloud data.deletedTables into tables with isArchived: true
     if (data.deletedTables && Array.isArray(data.deletedTables)) {
-      const mergedDel = [...deletedTables];
       data.deletedTables.forEach(delT => {
-        if (!permanentlyDeletedIds.includes(delT.id) && !mergedDel.some(ld => ld.id === delT.id)) {
-          mergedDel.push(delT);
+        if (!permanentlyDeletedIds.includes(delT.id)) {
+          let existing = tables.find(tbl => tbl.id === delT.id);
+          if (!existing) {
+            delT.isArchived = true;
+            tables.push(delT);
+          } else {
+            existing.isArchived = true;
+          }
         }
       });
-      deletedTables = mergedDel.filter(d => !permanentlyDeletedIds.includes(d.id));
     }
 
-    const allDeletedIds = new Set([
-      ...deletedTables.map(d => d.id),
-      ...permanentlyDeletedIds
-    ]);
+    const allDeletedIds = new Set(permanentlyDeletedIds);
 
     // 2. Merge active tables safely using mergeTablesSmart
     let shouldSyncBackMerged = false;
