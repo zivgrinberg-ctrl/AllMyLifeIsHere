@@ -2224,10 +2224,19 @@ function renderCheckboxTableBody(t, container) {
     textInput.dataset.itemId = item.id;
     textInput.addEventListener('input', () => {
       item.text = textInput.value;
+      const rootT = tables.find(tbl => tbl.id === t.id);
+      if (rootT && rootT.items) {
+        const rootItem = rootT.items.find(i => i.id === item.id);
+        if (rootItem) rootItem.text = textInput.value;
+      }
+      saveStateToLocalStorage();
+      saveDataToCloud();
     });
 
     textInput.addEventListener('change', () => {
       saveStateToHistory();
+      saveStateToLocalStorage();
+      saveDataToCloudDirect();
     });
 
     // Auto-remove empty checkbox row when losing focus & save state
@@ -2237,6 +2246,8 @@ function renderCheckboxTableBody(t, container) {
         t.items = t.items.filter(i => i.id !== item.id);
         renderCheckboxTableBody(t, container);
       }
+      saveStateToLocalStorage();
+      saveDataToCloudDirect();
     });
 
     // Press Enter to accept & create next row
@@ -2246,6 +2257,8 @@ function renderCheckboxTableBody(t, container) {
         const newItem = { id: Date.now().toString(), text: '', checked: false };
         t.items.splice(idx + 1, 0, newItem);
         renderCheckboxTableBody(t, container);
+        saveStateToLocalStorage();
+        saveDataToCloudDirect();
         setTimeout(() => {
           const inputs = container.querySelectorAll('.checkbox-table-item input[type="text"]');
           if (inputs[idx + 1]) inputs[idx + 1].focus();
@@ -2662,12 +2675,20 @@ function renderFreeTextTableBody(t, container) {
   textarea.value = t.textContent || '';
   textarea.addEventListener('input', () => {
     t.textContent = textarea.value;
+    const rootT = tables.find(tbl => tbl.id === t.id);
+    if (rootT) rootT.textContent = textarea.value;
+    saveStateToLocalStorage();
+    saveDataToCloud();
   });
   textarea.addEventListener('change', () => {
     saveStateToHistory();
+    saveStateToLocalStorage();
+    saveDataToCloudDirect();
   });
   textarea.addEventListener('blur', () => {
     saveStateToHistory();
+    saveStateToLocalStorage();
+    saveDataToCloudDirect();
   });
   container.appendChild(textarea);
 }
