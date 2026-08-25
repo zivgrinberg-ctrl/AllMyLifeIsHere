@@ -592,6 +592,46 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   tableForm.addEventListener('submit', handleTableFormSubmit);
 
+  // Sub-Category Modal Listeners
+  const subCategoryForm = document.getElementById('subCategoryForm');
+  const closeSubCatModalBtn = document.getElementById('closeSubCategoryModalBtn');
+  const cancelSubCatModalBtn = document.getElementById('cancelSubCategoryModalBtn');
+  const subCatModal = document.getElementById('subCategoryModal');
+
+  if (closeSubCatModalBtn) closeSubCatModalBtn.addEventListener('click', closeSubCategoryModal);
+  if (cancelSubCatModalBtn) cancelSubCatModalBtn.addEventListener('click', closeSubCategoryModal);
+  if (subCatModal) {
+    subCatModal.addEventListener('click', (e) => {
+      if (e.target === subCatModal) closeSubCategoryModal();
+    });
+  }
+
+  if (subCategoryForm) {
+    subCategoryForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const input = document.getElementById('subCategoryNameInput');
+      const name = input ? input.value.trim() : '';
+      if (name) {
+        if (!customSubCategories.includes(name)) {
+          saveStateToHistory();
+          customSubCategories.push(name);
+          currentSubCategory = name;
+          saveStateToLocalStorage();
+          saveDataToCloudDirect();
+          closeSubCategoryModal();
+          renderSubCategoriesBar();
+          renderFilteredTables();
+          showToast(`✨ תת-הקטגוריה "${name}" נוצרה בהצלחה!`);
+        } else {
+          currentSubCategory = name;
+          closeSubCategoryModal();
+          renderSubCategoriesBar();
+          renderFilteredTables();
+        }
+      }
+    });
+  }
+
   // Single-Select Unified 5-Tabs Listener
   tabButtons.forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1578,25 +1618,29 @@ function renderSubCategoriesBar() {
   if (addBtn && !addBtn.dataset.bound) {
     addBtn.dataset.bound = 'true';
     addBtn.addEventListener('click', () => {
-      const name = prompt('הכנס שם לתת-קטגוריה חדשה (למשל: פרויקטים, כספים, לימודים):');
-      if (name && name.trim()) {
-        const cleanName = name.trim();
-        if (!customSubCategories.includes(cleanName)) {
-          saveStateToHistory();
-          customSubCategories.push(cleanName);
-          currentSubCategory = cleanName;
-          saveStateToLocalStorage();
-          saveDataToCloudDirect();
-          renderSubCategoriesBar();
-          renderFilteredTables();
-          showToast(`✨ תת-הקטגוריה "${cleanName}" נוצרה בהצלחה!`);
-        } else {
-          currentSubCategory = cleanName;
-          renderSubCategoriesBar();
-          renderFilteredTables();
-        }
-      }
+      openSubCategoryModal();
     });
+  }
+}
+
+function openSubCategoryModal() {
+  const modal = document.getElementById('subCategoryModal');
+  const input = document.getElementById('subCategoryNameInput');
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    if (input) {
+      input.value = '';
+      input.focus();
+    }
+  }
+}
+
+function closeSubCategoryModal() {
+  const modal = document.getElementById('subCategoryModal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
   }
 }
 

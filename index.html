@@ -589,11 +589,31 @@
       <span>הפעולה בוטלה (Ctrl+Z)</span>
     </div>
 
+    <!-- Sub-Category Creation Modal (➕ תת-קטגוריה חדשה) -->
+    <div id="subCategoryModal" class="modal-backdrop hidden" aria-hidden="true" style="z-index: 100000;">
+      <div class="modal-dialog" style="max-width: 420px; background: #0f172a; border: 1px solid var(--accent-primary); box-shadow: 0 0 40px rgba(99, 102, 241, 0.4);">
+        <div class="modal-header">
+          <h2 style="font-family: 'Outfit', 'Rubik', sans-serif; font-size: 1.3rem; margin: 0;">➕ יצירת תת-קטגוריה חדשה</h2>
+          <button type="button" id="closeSubCategoryModalBtn" class="modal-close-btn">&times;</button>
+        </div>
+        <form id="subCategoryForm" class="modal-body" style="padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem;">
+          <div class="form-group">
+            <label for="subCategoryNameInput" style="font-weight: 600; font-size: 0.9rem; margin-bottom: 0.35rem; display: block;">שם תת-הקטגוריה</label>
+            <input type="text" id="subCategoryNameInput" class="form-input" required placeholder="למשל: פרויקטים, כספים, לימודים..." autocomplete="off" style="width: 100%; padding: 0.6rem;">
+          </div>
+          <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.5rem;">
+            <button type="button" id="cancelSubCategoryModalBtn" class="btn btn-secondary">ביטול</button>
+            <button type="submit" class="btn btn-primary">✨ צור תת-קטגוריה</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <!-- Firebase 10 SDK Compatibility Scripts (Optional Cloud Sync with Graceful Standalone Fallback for GitHub Pages) -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js" onerror="console.warn('Firebase App CDN omitted; running in standalone local mode for GitHub Pages')"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js" onerror="console.warn('Firebase Auth CDN omitted')"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js" onerror="console.warn('Firebase Firestore CDN omitted')"></script>
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" onerror="console.warn('heic2any converter CDN omitted')"></script>
-    <script src="app.js?v=20260825_v42"></script>
+    <script src="app.js?v=20260825_v43"></script>
 </body>
 </html>
