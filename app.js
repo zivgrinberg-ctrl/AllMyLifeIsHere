@@ -1455,30 +1455,25 @@ function getWeeklyArchiveData(t) {
       imageData: t.imageData || null,
       canvasData: t.canvasData || null,
       specialType: t.specialType || 'image',
-      content: t.content || '',
+      textContent: t.textContent || t.content || '',
       headers: t.headers ? JSON.parse(JSON.stringify(t.headers)) : ['עמודה 1', 'עמודה 2', 'עמודה 3'],
       gridData: t.gridData ? JSON.parse(JSON.stringify(t.gridData)) : [['', '', ''], ['', '', '']]
     };
   }
 
-  const activeWeekData = t.weeklyData[wKey];
-  return new Proxy(t, {
-    get(target, prop) {
-      if (['items', 'images', 'activeImageIndex', 'imageData', 'canvasData', 'specialType', 'content', 'gridData', 'headers'].includes(prop)) {
-        return activeWeekData[prop];
-      }
-      return target[prop];
-    },
-    set(target, prop, value) {
-      if (['items', 'images', 'activeImageIndex', 'imageData', 'canvasData', 'specialType', 'content', 'gridData', 'headers'].includes(prop)) {
-        activeWeekData[prop] = value;
-        target[prop] = value;
-        return true;
-      }
-      target[prop] = value;
-      return true;
-    }
-  });
+  // Directly attach the active week's data onto t so t is ALWAYS a 100% plain, JSON-serializable JS object!
+  const weekObj = t.weeklyData[wKey];
+  t.items = weekObj.items;
+  t.images = weekObj.images;
+  t.activeImageIndex = weekObj.activeImageIndex;
+  t.imageData = weekObj.imageData;
+  t.canvasData = weekObj.canvasData;
+  t.specialType = weekObj.specialType;
+  t.textContent = weekObj.textContent;
+  t.headers = weekObj.headers;
+  t.gridData = weekObj.gridData;
+
+  return t;
 }
 
 // Render Filtered Tables & Events List below Schedule
