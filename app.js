@@ -294,8 +294,10 @@ function loadBackupFromLocalStorage() {
             if (!permanentlyDeletedIds.includes(id)) permanentlyDeletedIds.push(id);
           });
         }
-        if (backup.customSubCategories && Array.isArray(backup.customSubCategories)) {
+        if (backup.customSubCategories && Array.isArray(backup.customSubCategories) && backup.customSubCategories.length > 0) {
           customSubCategories = backup.customSubCategories;
+        } else if (!customSubCategories || customSubCategories.length === 0) {
+          customSubCategories = ['פרויקטים', 'משימות שוטפות', 'רעיונות'];
         }
       }
     }
@@ -631,6 +633,14 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+
+  document.addEventListener('click', (e) => {
+    const targetBtn = e.target.closest('#addSubCatHeaderBtn') || e.target.closest('.add-subcat-btn');
+    if (targetBtn) {
+      e.preventDefault();
+      openSubCategoryModal();
+    }
+  });
 
   // Single-Select Unified 5-Tabs Listener
   tabButtons.forEach(btn => {
