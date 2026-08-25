@@ -1426,19 +1426,32 @@ function getWeekRangeString(startDate) {
 
 // Helper to resolve active week data proxy for weekly_archive tables
 function getWeeklyArchiveData(t) {
-  if (t.resetFrequency !== 'weekly_archive') return t;
+  if (!t) return t;
 
   if (!t.weeklyData) t.weeklyData = {};
   const targetWeekDate = (typeof currentWeekStart !== 'undefined' && currentWeekStart) ? currentWeekStart : new Date();
   const wKey = formatDateISO(getSunday(targetWeekDate));
 
   if (!t.weeklyData[wKey]) {
+    // 1. For Checkboxes: preserve item titles, but reset completed checkmarks for the new week!
+    let newItems = [];
+    if (t.items && Array.isArray(t.items) && t.items.length > 0) {
+      newItems = t.items.map(item => ({
+        ...item,
+        completed: false,
+        checked: false
+      }));
+    } else {
+      newItems = [{ id: Date.now().toString(), text: '', completed: false, checked: false }];
+    }
+
+    // 2. Weekly scope for all properties (each week gets fresh images/drawings for picture/drawing tables)
     t.weeklyData[wKey] = {
-      items: (t.items && t.items.length > 0) ? JSON.parse(JSON.stringify(t.items)) : [{ id: Date.now().toString(), text: '', checked: false }],
+      items: newItems,
       images: [],
       activeImageIndex: 0,
-      imageData: t.imageData || null,
-      canvasData: t.canvasData || null,
+      imageData: null,
+      canvasData: null,
       specialType: t.specialType || 'image',
       content: t.content || '',
       headers: t.headers ? JSON.parse(JSON.stringify(t.headers)) : ['עמודה 1', 'עמודה 2', 'עמודה 3'],
@@ -2777,12 +2790,34 @@ function handleGlobalGoogleSync() {
 }
 
 // Render Type 4: Special Table (✨ תמונה/ציור MS Paint)
+function readBlobAsDataURL(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(e.target.result);
+    reader.onerror = (e) => reject(e);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function checkCanRenderImage(dataUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(true);
+    img.onerror = () => resolve(false);
+    img.src = dataUrl;
+  });
+}
+
 async function processImageFile(file) {
   if (!file) return null;
-  const isHeic = file.name.toLowerCase().endsWith('.heic') || 
-                 file.name.toLowerCase().endsWith('.heif') || 
-                 (file.type && (file.type.toLowerCase().includes('heic') || file.type.toLowerCase().includes('heif')));
+  const fileName = (file.name || '').toLowerCase();
+  const fileType = (file.type || '').toLowerCase();
+  const isHeic = fileName.endsWith('.heic') || 
+                 fileName.endsWith('.heif') || 
+                 fileType.includes('heic') || 
+                 fileType.includes('heif');
 
+  // 1. Try heic2any for iPhone HEIC/HEIF files
   if (isHeic && typeof heic2any !== 'undefined') {
     try {
       showToast('🔄 ממר תמונת iPhone HEIC לפורמט JPEG...');
@@ -2792,12 +2827,35 @@ async function processImageFile(file) {
         quality: 0.85
       });
       const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
-      return new File([blob], file.name.replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg' });
+      return await readBlobAsDataURL(blob);
     } catch (err) {
-      console.warn('HEIC conversion notice:', err);
+      console.warn('heic2any conversion notice:', err);
     }
   }
-  return file;
+
+  // 2. Try standard FileReader and validate image renderability
+  try {
+    const dataUrl = await readBlobAsDataURL(file);
+    const canRender = await checkCanRenderImage(dataUrl);
+    if (canRender) return dataUrl;
+
+    // 3. Fallback: try createImageBitmap -> Canvas to JPEG DataURL
+    if (typeof createImageBitmap !== 'undefined') {
+      try {
+        const bmp = await createImageBitmap(file);
+        const cvs = document.createElement('canvas');
+        cvs.width = bmp.width;
+        cvs.height = bmp.height;
+        const ctx = cvs.getContext('2d');
+        ctx.drawImage(bmp, 0, 0);
+        return cvs.toDataURL('image/jpeg', 0.85);
+      } catch (e) {}
+    }
+    return dataUrl;
+  } catch (err) {
+    console.warn('Image processing notice:', err);
+    return null;
+  }
 }
 
 function renderSpecialTableBody(t, container) {
@@ -2900,21 +2958,18 @@ function renderSpecialTableBody(t, container) {
         const availableSlots = 10 - t.images.length;
         const filesToProcess = files.slice(0, availableSlots);
 
-        let loadedCount = 0;
         for (const rawFile of filesToProcess) {
-          const processedFile = await processImageFile(rawFile);
-          const reader = new FileReader();
-          reader.onload = (evt) => {
-            t.images.push(evt.target.result);
+          const dataUrl = await processImageFile(rawFile);
+          if (dataUrl) {
+            t.images.push(dataUrl);
             t.imageData = t.images[0]; // Fallback compatibility
-            loadedCount++;
-            if (loadedCount === filesToProcess.length) {
-              t.activeImageIndex = t.images.length - 1;
-              renderSpecialTableBody(t, container);
-              saveDataToCloudDirect();
-            }
-          };
-          reader.readAsDataURL(processedFile);
+          }
+        }
+        if (t.images.length > 0) {
+          t.activeImageIndex = t.images.length - 1;
+          renderSpecialTableBody(t, container);
+          saveDataToCloudDirect();
+          showToast('📸 התמונה נוספה בהצלחה לגלריית השבוע!');
         }
       }
     });
@@ -2951,6 +3006,8 @@ function renderSpecialTableBody(t, container) {
             t.imageData = t.images[0];
           }
           renderSpecialTableBody(t, container);
+          saveDataToCloudDirect();
+          showToast('🗑️ התמונה הוסרה בהצלחה מהגלריה');
         });
       }
 
@@ -3088,9 +3145,8 @@ function renderSpecialTableBody(t, container) {
       const file = e.target.files[0];
       if (file) {
         saveStateToHistory();
-        const processedFile = await processImageFile(file);
-        const reader = new FileReader();
-        reader.onload = (evt) => {
+        const dataUrl = await processImageFile(file);
+        if (dataUrl) {
           const img = new Image();
           img.onload = () => {
             const ctx = canvas.getContext('2d');
@@ -3099,9 +3155,8 @@ function renderSpecialTableBody(t, container) {
             renderSpecialTableBody(t, container);
             saveDataToCloudDirect();
           };
-          img.src = evt.target.result;
-        };
-        reader.readAsDataURL(processedFile);
+          img.src = dataUrl;
+        }
       }
     });
 
