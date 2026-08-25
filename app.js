@@ -2777,6 +2777,29 @@ function handleGlobalGoogleSync() {
 }
 
 // Render Type 4: Special Table (✨ תמונה/ציור MS Paint)
+async function processImageFile(file) {
+  if (!file) return null;
+  const isHeic = file.name.toLowerCase().endsWith('.heic') || 
+                 file.name.toLowerCase().endsWith('.heif') || 
+                 (file.type && (file.type.toLowerCase().includes('heic') || file.type.toLowerCase().includes('heif')));
+
+  if (isHeic && typeof heic2any !== 'undefined') {
+    try {
+      showToast('🔄 ממר תמונת iPhone HEIC לפורמט JPEG...');
+      const convertedBlob = await heic2any({
+        blob: file,
+        toType: 'image/jpeg',
+        quality: 0.85
+      });
+      const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
+      return new File([blob], file.name.replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg' });
+    } catch (err) {
+      console.warn('HEIC conversion notice:', err);
+    }
+  }
+  return file;
+}
+
 function renderSpecialTableBody(t, container) {
   container.innerHTML = '';
   if (!t.specialType) t.specialType = 'image';
@@ -2836,7 +2859,7 @@ function renderSpecialTableBody(t, container) {
       <div class="special-widget-header">
         <span>📸 גלריית תמונות השבוע (${totalImgs}/10 תמונות)</span>
         <div class="image-gallery-actions">
-          <input type="file" accept="image/*" multiple class="img-file-input" style="display:none;">
+          <input type="file" accept="image/*,.heic,.heif,image/heic,image/heif" multiple class="img-file-input" style="display:none;">
           <button type="button" class="btn btn-secondary btn-sm select-img-btn" ${totalImgs >= 10 ? 'disabled' : ''}>
             + להוספת תמונה (${totalImgs}/10)
           </button>
@@ -2861,7 +2884,7 @@ function renderSpecialTableBody(t, container) {
         </div>` : `
         <div class="empty-list-state" style="padding: 1.5rem; text-align: center;">
           <p style="color: var(--text-muted);">אין עדיין תמונות בגלריה זו.</p>
-          <p style="font-size: 0.85rem; margin-top: 0.25rem;">לחץ על <strong>"+ להוספת תמונה"</strong> למעלה להוספת עד 10 תמונות!</p>
+          <p style="font-size: 0.85rem; margin-top: 0.25rem;">לחץ על <strong>"+ להוספת תמונה"</strong> למעלה להוספת עד 10 תמונות (תמיכה מלאה ב-iPhone HEIC!)</p>
         </div>`}
     `;
 
@@ -2870,7 +2893,7 @@ function renderSpecialTableBody(t, container) {
 
     selectImgBtn.addEventListener('click', () => imgFileInput.click());
 
-    imgFileInput.addEventListener('change', (e) => {
+    imgFileInput.addEventListener('change', async (e) => {
       const files = Array.from(e.target.files);
       if (files.length > 0) {
         saveStateToHistory();
@@ -2878,7 +2901,8 @@ function renderSpecialTableBody(t, container) {
         const filesToProcess = files.slice(0, availableSlots);
 
         let loadedCount = 0;
-        filesToProcess.forEach(file => {
+        for (const rawFile of filesToProcess) {
+          const processedFile = await processImageFile(rawFile);
           const reader = new FileReader();
           reader.onload = (evt) => {
             t.images.push(evt.target.result);
@@ -2887,10 +2911,11 @@ function renderSpecialTableBody(t, container) {
             if (loadedCount === filesToProcess.length) {
               t.activeImageIndex = t.images.length - 1;
               renderSpecialTableBody(t, container);
+              saveDataToCloudDirect();
             }
           };
-          reader.readAsDataURL(file);
-        });
+          reader.readAsDataURL(processedFile);
+        }
       }
     });
 
@@ -2957,7 +2982,7 @@ function renderSpecialTableBody(t, container) {
             <button type="button" class="canvas-tool-btn mode-poly-btn" title="גזירה לא חופשית - מצולע/רדיוס סגור">📐 גזירה לא חופשית</button>
             <button type="button" class="canvas-tool-btn mode-rect-btn" title="גזירת מלבן / ריבוע">🔳 גזירת מלבן</button>
             <button type="button" class="canvas-tool-btn mode-paste-btn" title="הדבק אזור שנגזר" disabled>📌 הדבק</button>
-            <input type="file" accept="image/*" class="canvas-img-file-input" style="display:none;">
+            <input type="file" accept="image/*,.heic,.heif,image/heic,image/heif" class="canvas-img-file-input" style="display:none;">
             <button type="button" class="canvas-tool-btn add-canvas-img-btn" title="הוספת תמונה על משטח הציור">🖼️ תמונה</button>
           </div>
           
@@ -3059,10 +3084,11 @@ function renderSpecialTableBody(t, container) {
 
     // Add Image directly to Canvas
     addImgBtn.addEventListener('click', () => canvasImgFileInput.click());
-    canvasImgFileInput.addEventListener('change', (e) => {
+    canvasImgFileInput.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (file) {
         saveStateToHistory();
+        const processedFile = await processImageFile(file);
         const reader = new FileReader();
         reader.onload = (evt) => {
           const img = new Image();
@@ -3071,10 +3097,11 @@ function renderSpecialTableBody(t, container) {
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
             t.canvasData = canvas.toDataURL();
             renderSpecialTableBody(t, container);
+            saveDataToCloudDirect();
           };
           img.src = evt.target.result;
         };
-        reader.readAsDataURL(file);
+        reader.readAsDataURL(processedFile);
       }
     });
 
