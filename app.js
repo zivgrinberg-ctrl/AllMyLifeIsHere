@@ -2810,6 +2810,39 @@ function checkCanRenderImage(dataUrl) {
   });
 }
 
+function resizeAndCompressImage(dataUrl, maxDim = 1200, quality = 0.75) {
+  return new Promise((resolve) => {
+    if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image')) {
+      resolve(dataUrl);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+
+      const cvs = document.createElement('canvas');
+      cvs.width = width;
+      cvs.height = height;
+      const ctx = cvs.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(cvs.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 async function processImageFile(file) {
   if (!file) return null;
   const fileName = (file.name || '').toLowerCase();
@@ -2818,6 +2851,8 @@ async function processImageFile(file) {
                  fileName.endsWith('.heif') || 
                  fileType.includes('heic') || 
                  fileType.includes('heif');
+
+  let rawDataUrl = null;
 
   // 1. Try heic2any for iPhone HEIC/HEIF files
   if (isHeic && typeof heic2any !== 'undefined') {
@@ -2829,35 +2864,45 @@ async function processImageFile(file) {
         quality: 0.85
       });
       const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
-      return await readBlobAsDataURL(blob);
+      rawDataUrl = await readBlobAsDataURL(blob);
     } catch (err) {
       console.warn('heic2any conversion notice:', err);
     }
   }
 
   // 2. Try standard FileReader and validate image renderability
-  try {
-    const dataUrl = await readBlobAsDataURL(file);
-    const canRender = await checkCanRenderImage(dataUrl);
-    if (canRender) return dataUrl;
-
-    // 3. Fallback: try createImageBitmap -> Canvas to JPEG DataURL
-    if (typeof createImageBitmap !== 'undefined') {
-      try {
-        const bmp = await createImageBitmap(file);
-        const cvs = document.createElement('canvas');
-        cvs.width = bmp.width;
-        cvs.height = bmp.height;
-        const ctx = cvs.getContext('2d');
-        ctx.drawImage(bmp, 0, 0);
-        return cvs.toDataURL('image/jpeg', 0.85);
-      } catch (e) {}
+  if (!rawDataUrl) {
+    try {
+      const dataUrl = await readBlobAsDataURL(file);
+      const canRender = await checkCanRenderImage(dataUrl);
+      if (canRender) {
+        rawDataUrl = dataUrl;
+      } else if (typeof createImageBitmap !== 'undefined') {
+        // 3. Fallback: try createImageBitmap -> Canvas to JPEG DataURL
+        try {
+          const bmp = await createImageBitmap(file);
+          const cvs = document.createElement('canvas');
+          cvs.width = bmp.width;
+          cvs.height = bmp.height;
+          const ctx = cvs.getContext('2d');
+          ctx.drawImage(bmp, 0, 0);
+          rawDataUrl = cvs.toDataURL('image/jpeg', 0.85);
+        } catch (e) {
+          rawDataUrl = dataUrl;
+        }
+      } else {
+        rawDataUrl = dataUrl;
+      }
+    } catch (err) {
+      console.warn('Image processing notice:', err);
+      return null;
     }
-    return dataUrl;
-  } catch (err) {
-    console.warn('Image processing notice:', err);
-    return null;
   }
+
+  if (!rawDataUrl) return null;
+
+  // 4. Downscale & compress to max 1200px / 0.75 quality (~100KB) to guarantee LocalStorage & Firestore quotas!
+  return await resizeAndCompressImage(rawDataUrl, 1200, 0.75);
 }
 
 function renderSpecialTableBody(t, container) {
@@ -2942,9 +2987,10 @@ function renderSpecialTableBody(t, container) {
               `).join('')}
             </div>` : ''}
         </div>` : `
-        <div class="empty-list-state" style="padding: 1.5rem; text-align: center;">
-          <p style="color: var(--text-muted);">אין עדיין תמונות בגלריה זו.</p>
-          <p style="font-size: 0.85rem; margin-top: 0.25rem;">לחץ על <strong>"+ להוספת תמונה"</strong> למעלה להוספת עד 10 תמונות (תמיכה מלאה ב-iPhone HEIC!)</p>
+        <div class="empty-list-state image-drop-zone">
+          <div style="font-size: 2.2rem; margin-bottom: 0.35rem;">📥</div>
+          <p style="color: var(--text-color); font-weight: 600;">גרירת תמונות מהפיינדר / המחשב לכאן</p>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem;">או לחץ על <strong>"+ להוספת תמונה"</strong> למעלה (תמיכה מלאה ב-iPhone HEIC!)</p>
         </div>`}
     `;
 
@@ -2953,8 +2999,8 @@ function renderSpecialTableBody(t, container) {
 
     selectImgBtn.addEventListener('click', () => imgFileInput.click());
 
-    imgFileInput.addEventListener('change', async (e) => {
-      const files = Array.from(e.target.files);
+    const handleFilesProcess = async (filesList) => {
+      const files = Array.from(filesList);
       if (files.length > 0) {
         saveStateToHistory();
         const availableSlots = 10 - t.images.length;
@@ -2971,10 +3017,43 @@ function renderSpecialTableBody(t, container) {
           t.activeImageIndex = t.images.length - 1;
           renderSpecialTableBody(t, container);
           saveDataToCloudDirect();
-          showToast('📸 התמונה נוספה בהצלחה לגלריית השבוע!');
+          showToast('📸 התמונות נוספו בהצלחה לגלריית השבוע!');
         }
       }
+    };
+
+    imgFileInput.addEventListener('change', async (e) => {
+      await handleFilesProcess(e.target.files);
     });
+
+    // Drag & Drop functionality for Finder / Explorer files
+    ['dragenter', 'dragover'].forEach(evtName => {
+      imgCard.addEventListener(evtName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        imgCard.classList.add('drag-over');
+      }, false);
+    });
+
+    ['dragleave', 'drop'].forEach(evtName => {
+      imgCard.addEventListener(evtName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        imgCard.classList.remove('drag-over');
+      }, false);
+    });
+
+    imgCard.addEventListener('drop', async (e) => {
+      const dt = e.dataTransfer;
+      if (dt && dt.files && dt.files.length > 0) {
+        await handleFilesProcess(dt.files);
+      }
+    });
+
+    const dropZoneEl = imgCard.querySelector('.image-drop-zone');
+    if (dropZoneEl) {
+      dropZoneEl.addEventListener('click', () => imgFileInput.click());
+    }
 
     if (totalImgs > 0) {
       const prevBtn = imgCard.querySelector('.prev-gallery-img-btn');

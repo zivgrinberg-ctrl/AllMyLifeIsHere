@@ -1144,6 +1144,24 @@ body {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   padding: 0.85rem;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.image-drop-zone {
+  border: 2px dashed var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 1.5rem 1rem;
+  text-align: center;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.02);
+  transition: all 0.25s ease;
+}
+
+.image-drop-zone:hover,
+.image-drop-zone.drag-over,
+.special-widget-card.drag-over {
+  border-color: #6366f1 !important;
+  background: rgba(99, 102, 241, 0.08) !important;
 }
 
 .special-widget-header {
