@@ -7,6 +7,8 @@ let permanentlyDeletedIds = []; // Registry of permanently deleted table IDs to 
 let editingEventId = null;
 let editingTableId = null;
 let currentTab = 'all'; // Single active tab: 'all' | 'today' | 'life' | 'work' | 'fun'
+let customSubCategories = ['פרויקטים', 'משימות שוטפות', 'רעיונות']; // Dynamic sub-categories
+let currentSubCategory = 'all'; // Filter by sub-category: 'all' | subCategoryName
 let googleIcalUrl = localStorage.getItem('allmylifeishere_google_ical_url') || '';
 let googleEvents = [];
 let activeGoogleEvent = null;
@@ -226,7 +228,7 @@ function saveStateToLocalStorage() {
     if (!currentUser || !currentUser.email) return;
     const key = getUserStorageKey(currentUser.email);
     if (key) {
-      localStorage.setItem(key, JSON.stringify({ tables, events, deletedTables, permanentlyDeletedIds }));
+      localStorage.setItem(key, JSON.stringify({ tables, events, deletedTables, permanentlyDeletedIds, customSubCategories }));
     }
     saveVaultSnapshot();
   } catch (e) {
@@ -291,6 +293,9 @@ function loadBackupFromLocalStorage() {
           backup.permanentlyDeletedIds.forEach(id => {
             if (!permanentlyDeletedIds.includes(id)) permanentlyDeletedIds.push(id);
           });
+        }
+        if (backup.customSubCategories && Array.isArray(backup.customSubCategories)) {
+          customSubCategories = backup.customSubCategories;
         }
       }
     }
@@ -1197,6 +1202,19 @@ function updateGridDimensionsVisibility() {
   }
 }
 
+function populateTableSubCategorySelect(selectedSubCat = '') {
+  const select = document.getElementById('tableSubCategorySelect');
+  if (!select) return;
+  select.innerHTML = '<option value="">-- ללא תת-קטגוריה (הכל) --</option>';
+  customSubCategories.forEach(sc => {
+    const opt = document.createElement('option');
+    opt.value = sc;
+    opt.textContent = `📁 ${sc}`;
+    if (sc === selectedSubCat) opt.selected = true;
+    select.appendChild(opt);
+  });
+}
+
 function openTableModal(tableToEdit = null) {
   if (tableToEdit && tableToEdit.id) {
     editingTableId = tableToEdit.id;
@@ -1210,6 +1228,8 @@ function openTableModal(tableToEdit = null) {
     document.querySelectorAll('input[name="tableCategories"]').forEach(cb => {
       cb.checked = tableToEdit.categories && tableToEdit.categories.includes(cb.value);
     });
+
+    populateTableSubCategorySelect(tableToEdit.subCategory || '');
 
     // Select type radio
     const typeRadio = document.querySelector(`input[name="tableType"][value="${tableToEdit.type}"]`);
@@ -1228,6 +1248,8 @@ function openTableModal(tableToEdit = null) {
     document.querySelectorAll('input[name="tableCategories"]').forEach(cb => {
       cb.checked = (cb.value === targetCat);
     });
+
+    populateTableSubCategorySelect(currentSubCategory !== 'all' ? currentSubCategory : '');
 
     const firstType = document.querySelector('input[name="tableType"][value="checkboxes"]');
     if (firstType) firstType.checked = true;
@@ -1261,6 +1283,9 @@ function handleTableFormSubmit(e) {
   let categories = Array.from(document.querySelectorAll('input[name="tableCategories"]:checked')).map(cb => cb.value);
   if (categories.length === 0) categories = ['life'];
 
+  const subCategorySelect = document.getElementById('tableSubCategorySelect');
+  const subCategory = subCategorySelect ? (subCategorySelect.value || null) : null;
+
   const isToday = tableTodayInput.checked;
   const isCompact = tableCompactInput ? tableCompactInput.checked : false;
 
@@ -1275,6 +1300,7 @@ function handleTableFormSubmit(e) {
           title,
           resetFrequency,
           categories,
+          subCategory,
           isToday,
           isCompact
         };
@@ -1321,6 +1347,7 @@ function handleTableFormSubmit(e) {
       type,
       resetFrequency,
       categories,
+      subCategory,
       isToday,
       isCompact,
       createdAt: formatDateISO(new Date()),
@@ -1474,6 +1501,103 @@ function getWeeklyArchiveData(t) {
   t.gridData = weekObj.gridData;
 
   return t;
+}
+
+function renderSubCategoriesBar() {
+  const strip = document.getElementById('subCatStrip');
+  const addBtn = document.getElementById('addSubCatHeaderBtn');
+  if (!strip) return;
+
+  strip.innerHTML = '';
+
+  const activeTables = tables.filter(t => !t.isArchived && !permanentlyDeletedIds.includes(t.id));
+  let parentCategoryTables = activeTables;
+  if (currentTab !== 'all') {
+    if (currentTab === 'today') {
+      parentCategoryTables = activeTables.filter(t => t.isToday);
+    } else {
+      parentCategoryTables = activeTables.filter(t => !t.categories || t.categories.length === 0 || t.categories.includes(currentTab));
+    }
+  }
+
+  // 1. "🌟 הכל" Pill
+  const allPill = document.createElement('div');
+  allPill.className = `sub-cat-pill ${currentSubCategory === 'all' ? 'active' : ''}`;
+  allPill.innerHTML = `
+    <span>🌟 הכל</span>
+    <span class="sub-cat-count">${parentCategoryTables.length}</span>
+  `;
+  allPill.addEventListener('click', () => {
+    currentSubCategory = 'all';
+    renderSubCategoriesBar();
+    renderFilteredTables();
+  });
+  strip.appendChild(allPill);
+
+  // 2. Custom Sub-Category Pills
+  customSubCategories.forEach(subCat => {
+    const count = parentCategoryTables.filter(t => t.subCategory === subCat).length;
+    const pill = document.createElement('div');
+    pill.className = `sub-cat-pill ${currentSubCategory === subCat ? 'active' : ''}`;
+    pill.innerHTML = `
+      <span>📁 ${subCat}</span>
+      <span class="sub-cat-count">${count}</span>
+      <span class="btn-del-subcat" title="הסר תת-קטגוריה זו">&times;</span>
+    `;
+
+    pill.addEventListener('click', (e) => {
+      if (e.target.classList.contains('btn-del-subcat')) return;
+      currentSubCategory = subCat;
+      renderSubCategoriesBar();
+      renderFilteredTables();
+    });
+
+    const delBtn = pill.querySelector('.btn-del-subcat');
+    if (delBtn) {
+      delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (confirm(`האם להסיר את תת-הקטגוריה "${subCat}"?`)) {
+          saveStateToHistory();
+          customSubCategories = customSubCategories.filter(sc => sc !== subCat);
+          if (currentSubCategory === subCat) currentSubCategory = 'all';
+          tables.forEach(t => {
+            if (t.subCategory === subCat) t.subCategory = null;
+          });
+          saveStateToLocalStorage();
+          saveDataToCloudDirect();
+          renderSubCategoriesBar();
+          renderFilteredTables();
+          showToast(`🗑️ תת-הקטגוריה "${subCat}" הוסרה`);
+        }
+      });
+    }
+
+    strip.appendChild(pill);
+  });
+
+  if (addBtn && !addBtn.dataset.bound) {
+    addBtn.dataset.bound = 'true';
+    addBtn.addEventListener('click', () => {
+      const name = prompt('הכנס שם לתת-קטגוריה חדשה (למשל: פרויקטים, כספים, לימודים):');
+      if (name && name.trim()) {
+        const cleanName = name.trim();
+        if (!customSubCategories.includes(cleanName)) {
+          saveStateToHistory();
+          customSubCategories.push(cleanName);
+          currentSubCategory = cleanName;
+          saveStateToLocalStorage();
+          saveDataToCloudDirect();
+          renderSubCategoriesBar();
+          renderFilteredTables();
+          showToast(`✨ תת-הקטגוריה "${cleanName}" נוצרה בהצלחה!`);
+        } else {
+          currentSubCategory = cleanName;
+          renderSubCategoriesBar();
+          renderFilteredTables();
+        }
+      }
+    });
+  }
 }
 
 // Render Filtered Tables & Events List below Schedule
@@ -4275,6 +4399,7 @@ function saveDataToCloudDirect() {
       events: events,
       deletedTables: deletedTables,
       permanentlyDeletedIds: permanentlyDeletedIds,
+      customSubCategories: customSubCategories,
       completedTasksHistory: (typeof completedTasksHistory !== 'undefined' && Array.isArray(completedTasksHistory)) ? completedTasksHistory : [],
       updatedAt: timestamp,
       lastDeviceId: myDeviceId
@@ -4504,6 +4629,12 @@ function subscribeToCloudUpdates() {
     if (data.permanentlyDeletedIds && Array.isArray(data.permanentlyDeletedIds)) {
       data.permanentlyDeletedIds.forEach(id => {
         if (!permanentlyDeletedIds.includes(id)) permanentlyDeletedIds.push(id);
+      });
+    }
+
+    if (data.customSubCategories && Array.isArray(data.customSubCategories)) {
+      data.customSubCategories.forEach(sc => {
+        if (!customSubCategories.includes(sc)) customSubCategories.push(sc);
       });
     }
 

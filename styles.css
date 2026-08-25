@@ -1137,6 +1137,88 @@ body {
 }
 
 /* Special Table (Image & Drawing Canvas) Styles */
+/* Sub-Categories Filter Bar */
+.sub-categories-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--border-color);
+  overflow-x: auto;
+}
+
+.sub-cat-scroll-strip {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.sub-cat-scroll-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.sub-cat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.7rem;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.sub-cat-pill:hover {
+  color: var(--text-primary);
+  border-color: #6366f1;
+}
+
+.sub-cat-pill.active {
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: #ffffff;
+  border-color: transparent;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
+}
+
+.sub-cat-pill .sub-cat-count {
+  font-size: 0.72rem;
+  opacity: 0.85;
+  background: rgba(255, 255, 255, 0.18);
+  padding: 0.05rem 0.4rem;
+  border-radius: 10px;
+}
+
+.sub-cat-pill .btn-del-subcat {
+  font-size: 0.85rem;
+  opacity: 0.6;
+  margin-right: 0.2rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sub-cat-pill .btn-del-subcat:hover {
+  opacity: 1;
+  color: #ef4444;
+}
+
+.add-subcat-btn {
+  white-space: nowrap;
+  font-size: 0.78rem;
+  padding: 0.25rem 0.6rem;
+}
+
 .special-table-body {
   display: flex;
   flex-direction: column;
