@@ -1259,7 +1259,7 @@ function populateTableSubCategorySelect(selectedSubCat = '') {
   customSubCategories.forEach(sc => {
     const opt = document.createElement('option');
     opt.value = sc;
-    opt.textContent = `📁 ${sc}`;
+    opt.textContent = sc;
     if (sc === selectedSubCat) opt.selected = true;
     select.appendChild(opt);
   });
@@ -1570,11 +1570,11 @@ function renderSubCategoriesBar() {
     }
   }
 
-  // 1. "🌟 הכל" Pill
+  // 1. "הכל" Pill
   const allPill = document.createElement('div');
   allPill.className = `sub-cat-pill ${currentSubCategory === 'all' ? 'active' : ''}`;
   allPill.innerHTML = `
-    <span>🌟 הכל</span>
+    <span>הכל</span>
     <span class="sub-cat-count">${parentCategoryTables.length}</span>
   `;
   allPill.addEventListener('click', () => {
@@ -1590,7 +1590,7 @@ function renderSubCategoriesBar() {
     const pill = document.createElement('div');
     pill.className = `sub-cat-pill ${currentSubCategory === subCat ? 'active' : ''}`;
     pill.innerHTML = `
-      <span>📁 ${subCat}</span>
+      <span>${subCat}</span>
       <span class="sub-cat-count">${count}</span>
       <span class="btn-del-subcat" title="הסר תת-קטגוריה זו">&times;</span>
     `;
