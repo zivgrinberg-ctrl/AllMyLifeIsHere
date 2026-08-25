@@ -802,9 +802,11 @@ function parseTimeToMinutes(timeStr) {
 // Helper: Get Sunday (start of week in Israel)
 function getSunday(d) {
   const date = new Date(d);
+  date.setHours(12, 0, 0, 0);
   const day = date.getDay();
   const diff = date.getDate() - day;
-  return new Date(date.setDate(diff));
+  date.setDate(diff);
+  return date;
 }
 
 // Format YYYY-MM-DD
@@ -1445,13 +1447,13 @@ function getWeeklyArchiveData(t) {
       newItems = [{ id: Date.now().toString(), text: '', completed: false, checked: false }];
     }
 
-    // 2. Weekly scope for all properties (each week gets fresh images/drawings for picture/drawing tables)
+    // 2. Weekly scope for all properties (inherit initial images/drawings from table object if present)
     t.weeklyData[wKey] = {
       items: newItems,
-      images: [],
-      activeImageIndex: 0,
-      imageData: null,
-      canvasData: null,
+      images: (t.images && Array.isArray(t.images) && t.images.length > 0) ? JSON.parse(JSON.stringify(t.images)) : [],
+      activeImageIndex: (typeof t.activeImageIndex === 'number') ? t.activeImageIndex : 0,
+      imageData: t.imageData || null,
+      canvasData: t.canvasData || null,
       specialType: t.specialType || 'image',
       content: t.content || '',
       headers: t.headers ? JSON.parse(JSON.stringify(t.headers)) : ['עמודה 1', 'עמודה 2', 'עמודה 3'],
