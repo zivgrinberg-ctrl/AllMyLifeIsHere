@@ -231,11 +231,13 @@ function getUserStorageKey(email) {
 
 function saveStateToLocalStorage() {
   try {
-    if (!currentUser || !currentUser.email) return;
-    const key = getUserStorageKey(currentUser.email);
+    const email = (currentUser && currentUser.email) ? currentUser.email : 'local@user.com';
+    const key = getUserStorageKey(email);
+    const payload = JSON.stringify({ tables, events, deletedTables, permanentlyDeletedIds, subCategoriesByTab });
     if (key) {
-      localStorage.setItem(key, JSON.stringify({ tables, events, deletedTables, permanentlyDeletedIds, subCategoriesByTab }));
+      localStorage.setItem(key, payload);
     }
+    localStorage.setItem('allmylifeishere_board_backup', payload);
     saveVaultSnapshot();
   } catch (e) {
     console.warn('LocalStorage save backup notice:', e);
@@ -243,7 +245,7 @@ function saveStateToLocalStorage() {
 }
 
 function saveVaultSnapshot() {
-  if (!currentUser || !currentUser.email || (tables.length === 0 && events.length === 0)) return;
+  if (tables.length === 0 && events.length === 0) return;
   try {
     const vaultStr = localStorage.getItem('allmylifeishere_history_vault');
     let vault = vaultStr ? JSON.parse(vaultStr) : [];
@@ -270,14 +272,10 @@ function loadBackupFromLocalStorage() {
     events = [];
     deletedTables = [];
 
-    if (!currentUser || !currentUser.email) return;
-
-    const key = getUserStorageKey(currentUser.email);
+    const email = (currentUser && currentUser.email) ? currentUser.email : 'local@user.com';
+    const key = getUserStorageKey(email);
     let backupStr = key ? localStorage.getItem(key) : null;
-
-    // Only migrate legacy backup if the user email is primary account
-    const userEmailClean = currentUser.email.toLowerCase();
-    if (!backupStr && (userEmailClean.includes('ziv') || userEmailClean.includes('admin'))) {
+    if (!backupStr) {
       backupStr = localStorage.getItem('allmylifeishere_board_backup');
       if (backupStr && key) {
         localStorage.setItem(key, backupStr);
@@ -553,14 +551,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (currentUser && currentUser.email) {
     const rawKey = currentUser.email.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
     currentSyncKey = 'USER-' + rawKey;
-    loadBackupFromLocalStorage();
-  } else {
-    currentUser = null;
-    currentSyncKey = null;
-    tables = [];
-    events = [];
-    deletedTables = [];
   }
+  loadBackupFromLocalStorage();
 
   populateDateDropdowns();
   populateTimeDropdowns();
@@ -570,6 +562,61 @@ document.addEventListener('DOMContentLoaded', () => {
   scrollToSixAM();
   renderFilteredTables();
   initScheduleToggle();
+
+  // Sub-Category Modal Listeners
+  const subCategoryForm = document.getElementById('subCategoryForm');
+  const closeSubCatModalBtn = document.getElementById('closeSubCatModalBtn');
+  const cancelSubCatBtn = document.getElementById('cancelSubCatBtn');
+  const subCategoryModal = document.getElementById('subCategoryModal');
+
+  if (subCategoryForm) subCategoryForm.addEventListener('submit', handleSubCategoryFormSubmit);
+  if (closeSubCatModalBtn) closeSubCatModalBtn.addEventListener('click', closeSubCategoryModal);
+  if (cancelSubCatBtn) cancelSubCatBtn.addEventListener('click', closeSubCategoryModal);
+  if (subCategoryModal) {
+    subCategoryModal.addEventListener('click', (e) => {
+      if (e.target === subCategoryModal) closeSubCategoryModal();
+    });
+  }
+
+  // Global click delegation for sub-category bar & pills
+  document.addEventListener('click', (e) => {
+    // Delete sub-category x click
+    const deleteX = e.target.closest('[data-delete-subcat]');
+    if (deleteX) {
+      e.preventDefault();
+      e.stopPropagation();
+      const subCatName = deleteX.dataset.deleteSubcat;
+      if (subCatName && confirm(`האם למחוק את תת-הקטגוריה "${subCatName}"?`)) {
+        saveStateToHistory();
+        if (!subCategoriesByTab[currentTab]) subCategoriesByTab[currentTab] = [];
+        subCategoriesByTab[currentTab] = subCategoriesByTab[currentTab].filter(sc => sc !== subCatName);
+        if (currentSubCategory === subCatName) currentSubCategory = 'all';
+        saveStateToLocalStorage();
+        if (typeof saveDataToCloud === 'function') saveDataToCloud();
+        renderFilteredTables();
+      }
+      return;
+    }
+
+    // Click sub-category pill
+    const pillBtn = e.target.closest('.sub-cat-pill');
+    if (pillBtn && !e.target.classList.contains('delete-subcat-x')) {
+      e.preventDefault();
+      const subCat = pillBtn.dataset.subcat;
+      if (subCat) {
+        currentSubCategory = subCat;
+        renderFilteredTables();
+      }
+      return;
+    }
+
+    // Click + תת-קטגוריה button
+    const addSubCatBtn = e.target.closest('#addSubCatHeaderBtn') || e.target.closest('.add-subcat-btn');
+    if (addSubCatBtn) {
+      e.preventDefault();
+      openSubCategoryModal();
+    }
+  });
 
   // Navigation Event Listeners
   prevWeekBtn.addEventListener('click', () => {
@@ -605,6 +652,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const tab = btn.dataset.tab;
       if (!tab) return;
       currentTab = tab;
+      currentSubCategory = 'all';
 
       tabButtons.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
