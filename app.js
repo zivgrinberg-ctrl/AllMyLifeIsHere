@@ -550,74 +550,7 @@ function initScheduleToggle() {
   updateScheduleToggleUI();
 }
 
-// Helper to update active tab styling visually
-function updateTabButtonsUI() {
-  const allTabBtns = document.querySelectorAll('.tab-btn');
-  allTabBtns.forEach(btn => {
-    if (btn.dataset.tab === currentTab) {
-      btn.classList.add('active');
-    } else {
-      btn.classList.remove('active');
-    }
-  });
-}
-
-// Global click delegation for main tabs & sub-categories
-document.addEventListener('click', (e) => {
-  // Delete sub-category x click
-  const deleteX = e.target.closest('[data-delete-subcat]');
-  if (deleteX) {
-    e.preventDefault();
-    e.stopPropagation();
-    const subCatName = deleteX.dataset.deleteSubcat;
-    if (subCatName && confirm(`האם למחוק את תת-הקטגוריה "${subCatName}"?`)) {
-      saveStateToHistory();
-      if (!subCategoriesByTab[currentTab]) subCategoriesByTab[currentTab] = [];
-      subCategoriesByTab[currentTab] = subCategoriesByTab[currentTab].filter(sc => sc !== subCatName);
-      if (currentSubCategory === subCatName) currentSubCategory = 'all';
-      saveStateToLocalStorage();
-      if (typeof saveDataToCloud === 'function') saveDataToCloud();
-      renderFilteredTables();
-    }
-    return;
-  }
-
-  // Click sub-category pill
-  const pillBtn = e.target.closest('.sub-cat-pill');
-  if (pillBtn && !e.target.classList.contains('delete-subcat-x')) {
-    e.preventDefault();
-    const subCat = pillBtn.dataset.subcat;
-    if (subCat) {
-      currentSubCategory = subCat;
-      renderFilteredTables();
-    }
-    return;
-  }
-
-  // Click + תת-קטגוריה button
-  const addSubCatBtn = e.target.closest('#addSubCatHeaderBtn') || e.target.closest('.add-subcat-btn');
-  if (addSubCatBtn) {
-    e.preventDefault();
-    openSubCategoryModal();
-    return;
-  }
-
-  // Click Main Tab button
-  const tabBtn = e.target.closest('.tab-btn');
-  if (tabBtn) {
-    e.preventDefault();
-    const tab = tabBtn.dataset.tab;
-    if (tab) {
-      currentTab = tab;
-      currentSubCategory = 'all';
-      updateTabButtonsUI();
-      renderFilteredTables();
-    }
-    return;
-  }
-});
-
-// Main App Initialization
+// Initialize
 function initApp() {
   const savedUserStr = localStorage.getItem('allmylifeishere_user') || getCookie('allmylifeishere_user');
   if (savedUserStr) {
@@ -663,6 +596,93 @@ function initApp() {
       if (e.target === subCategoryModal) closeSubCategoryModal();
     });
   }
+
+  // Global click delegation for sub-category bar & pills & main tabs
+  document.addEventListener('click', (e) => {
+    // Clear all sub-categories button
+    const clearBtn = e.target.closest('#clearSubCatsBtn');
+    if (clearBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      subCategoriesByTab[currentTab] = [];
+      currentSubCategory = 'all';
+      saveStateToLocalStorage();
+      if (typeof saveDataToCloud === 'function') saveDataToCloud();
+      renderFilteredTables();
+      return;
+    }
+
+    // Delete sub-category x click (INSTANT, NO CONFIRM POPUP)
+    const deleteX = e.target.closest('[data-delete-subcat]');
+    if (deleteX) {
+      e.preventDefault();
+      e.stopPropagation();
+      const subCatName = deleteX.dataset.deleteSubcat;
+      if (subCatName) {
+        saveStateToHistory();
+        if (!subCategoriesByTab[currentTab]) subCategoriesByTab[currentTab] = [];
+        subCategoriesByTab[currentTab] = subCategoriesByTab[currentTab].filter(sc => sc !== subCatName);
+        if (currentSubCategory === subCatName) currentSubCategory = 'all';
+
+        // Clear subCategory property from tables with this subCategory
+        tables.forEach(t => {
+          if (t.subCategory === subCatName) t.subCategory = '';
+        });
+
+        saveStateToLocalStorage();
+        if (typeof saveDataToCloud === 'function') saveDataToCloud();
+        renderFilteredTables();
+      }
+      return;
+    }
+
+    // Click sub-category pill
+    const pillBtn = e.target.closest('.sub-cat-pill');
+    if (pillBtn && !e.target.classList.contains('delete-subcat-x')) {
+      e.preventDefault();
+      const subCat = pillBtn.dataset.subcat;
+      if (subCat) {
+        // Toggle off if already selected
+        if (currentSubCategory === subCat) {
+          currentSubCategory = 'all';
+        } else {
+          currentSubCategory = subCat;
+        }
+        renderFilteredTables();
+      }
+      return;
+    }
+
+    // Click + תת-קטגוריה button
+    const addSubCatBtn = e.target.closest('#addSubCatHeaderBtn') || e.target.closest('.add-subcat-btn');
+    if (addSubCatBtn) {
+      e.preventDefault();
+      openSubCategoryModal();
+      return;
+    }
+
+    // Click Main Tab button
+    const tabBtn = e.target.closest('.tab-btn');
+    if (tabBtn) {
+      e.preventDefault();
+      const tab = tabBtn.dataset.tab;
+      if (tab) {
+        currentTab = tab;
+        currentSubCategory = 'all';
+
+        document.querySelectorAll('.tab-btn').forEach(b => {
+          if (b.dataset.tab === currentTab) {
+            b.classList.add('active');
+          } else {
+            b.classList.remove('active');
+          }
+        });
+
+        renderFilteredTables();
+      }
+      return;
+    }
+  });
 
   // Navigation Event Listeners
   if (prevWeekBtn) prevWeekBtn.addEventListener('click', () => changeWeek(-7));
@@ -712,18 +732,16 @@ function initApp() {
   }
 
   // Auto adjust end time when start time changes
-  if (eventStartTimeInput) {
-    eventStartTimeInput.addEventListener('change', () => {
-      const startMin = parseTimeToMinutes(eventStartTimeInput.value);
-      const endMin = parseTimeToMinutes(eventEndTimeInput.value);
-      if (endMin <= startMin && eventDateInput.value === eventEndDateInput.value) {
-        const newEndMin = startMin + 60; // default 1 hour duration
-        const h = Math.min(Math.floor(newEndMin / 60), 23);
-        const m = newEndMin % 60;
-        if (eventEndTimeInput) eventEndTimeInput.value = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-      }
-    });
-  }
+  eventStartTimeInput.addEventListener('change', () => {
+    const startMin = parseTimeToMinutes(eventStartTimeInput.value);
+    const endMin = parseTimeToMinutes(eventEndTimeInput.value);
+    if (endMin <= startMin && eventDateInput.value === eventEndDateInput.value) {
+      const newEndMin = startMin + 60; // default 1 hour duration
+      const h = Math.min(Math.floor(newEndMin / 60), 23);
+      const m = newEndMin % 60;
+      eventEndTimeInput.value = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    }
+  });
 
   if (eventForm) eventForm.addEventListener('submit', handleFormSubmit);
 }
@@ -1294,8 +1312,12 @@ function renderSubCategoriesBar() {
   const subCatStrip = document.getElementById('subCatStrip');
   if (!subCatStrip) return;
 
-  const activeTables = tables.filter(t => !t.isArchived && !permanentlyDeletedIds.includes(t.id));
   const currentList = subCategoriesByTab[currentTab] || [];
+  if (currentList.length === 0) {
+    currentSubCategory = 'all';
+  }
+
+  const activeTables = tables.filter(t => !t.isArchived && !permanentlyDeletedIds.includes(t.id));
   let html = '';
 
   const isAllActive = (currentSubCategory === 'all') ? 'active' : '';
@@ -1725,8 +1747,7 @@ function renderFilteredTables() {
   const totalCount = filteredTbls.length + filteredEvs.length;
   if (elCount) elCount.textContent = `${totalCount} פריטים`;
 
-  if (!elList) return;
-  elList.innerHTML = '';
+  if (elList) elList.innerHTML = '';
 
   if (totalCount === 0) {
     const hintMsg = (currentSubCategory !== 'all')
@@ -1735,11 +1756,13 @@ function renderFilteredTables() {
         ? `קיימות <strong>${tables.length} טבלאות</strong> בלשוניות אחרות. לחץ על <strong>"הכל"</strong> בסרגל העליון כדי לראות אותן!`
         : 'לחץ על <strong>"+ הוספת טבלה"</strong> כדי ליצור תוכן חדש!';
 
-    elList.innerHTML = `
-      <div class="empty-list-state">
-        <p>אין תכנים או אירועים בלשונית זו (${categoryNames[currentTab] || currentTab}${currentSubCategory !== 'all' ? ` - ${escapeHtml(currentSubCategory)}` : ''}).</p>
-        <p style="margin-top: 0.5rem; font-size: 0.9rem; color: #a5b4fc;">${hintMsg}</p>
-      </div>`;
+    if (elList) {
+      elList.innerHTML = `
+        <div class="empty-list-state">
+          <p>אין תכנים או אירועים בלשונית זו (${categoryNames[currentTab] || currentTab}${currentSubCategory !== 'all' ? ` - ${escapeHtml(currentSubCategory)}` : ''}).</p>
+          <p style="margin-top: 0.5rem; font-size: 0.9rem; color: #a5b4fc;">${hintMsg}</p>
+        </div>`;
+    }
     return;
   }
 
@@ -1909,7 +1932,7 @@ function renderFilteredTables() {
       renderSpecialTableBody(activeTableObj, bodyContainer);
     }
 
-    elList.appendChild(card);
+    filteredTablesList.appendChild(card);
   });
 
   // Render Events
@@ -1917,7 +1940,7 @@ function renderFilteredTables() {
     const eventsHeading = document.createElement('h4');
     eventsHeading.className = 'section-subheading';
     eventsHeading.textContent = '📅 אירועים';
-    elList.appendChild(eventsHeading);
+    filteredTablesList.appendChild(eventsHeading);
 
     filteredEvs.forEach(ev => {
       const isRecurring = ev.recurrence && ev.recurrence !== 'none';
@@ -1942,7 +1965,7 @@ function renderFilteredTables() {
       `;
 
       item.addEventListener('click', () => openModal(ev));
-      elList.appendChild(item);
+      filteredTablesList.appendChild(item);
     });
   }
 
@@ -2164,11 +2187,11 @@ function renderDeletedTablesArchiveCard() {
     archiveWrapper.appendChild(listCard);
   }
 
-  const targetList = document.getElementById('filteredTablesList') || filteredTablesList;
+  const bottomSection = document.querySelector('.bottom-section') || document.querySelector('.schedule-wrapper');
   if (bottomSection) {
     bottomSection.appendChild(archiveWrapper);
-  } else if (targetList) {
-    targetList.appendChild(archiveWrapper);
+  } else if (filteredTablesList) {
+    filteredTablesList.appendChild(archiveWrapper);
   }
 }
 
@@ -2319,10 +2342,7 @@ function renderCompletedTasksLogCard() {
     });
   }
 
-  const targetList = document.getElementById('filteredTablesList') || filteredTablesList;
-  if (targetList) {
-    targetList.appendChild(logCard);
-  }
+  filteredTablesList.appendChild(logCard);
 }
 
 // Render Type 1: Checkbox List with Drag & Drop and Up/Down Reordering
