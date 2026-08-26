@@ -242,6 +242,12 @@ function getUserStorageKey(email) {
 
 function saveStateToLocalStorage() {
   try {
+    if (Array.isArray(tables)) {
+      tables.forEach(t => {
+        if (typeof syncTableWeeklyData === 'function') syncTableWeeklyData(t);
+      });
+    }
+
     const payloadStr = JSON.stringify({ tables, events, deletedTables, permanentlyDeletedIds, subCategoriesByTab });
     localStorage.setItem('allmylifeishere_sub_categories', JSON.stringify(subCategoriesByTab));
     localStorage.setItem('allmylifeishere_board_backup', payloadStr);
@@ -1722,6 +1728,26 @@ function getWeekRangeString(startDate) {
   return `${startDay}-${endDay} ב${monthName} ${year}`;
 }
 
+// Helper to keep active week's data synchronized with root table object
+function syncTableWeeklyData(t) {
+  if (!t) return;
+  if (!t.weeklyData) t.weeklyData = {};
+  const targetWeekDate = (typeof currentWeekStart !== 'undefined' && currentWeekStart) ? currentWeekStart : new Date();
+  const wKey = formatDateISO(getSunday(targetWeekDate));
+
+  t.weeklyData[wKey] = {
+    items: t.items ? JSON.parse(JSON.stringify(t.items)) : [],
+    images: t.images ? JSON.parse(JSON.stringify(t.images)) : [],
+    activeImageIndex: (typeof t.activeImageIndex === 'number') ? t.activeImageIndex : 0,
+    imageData: t.imageData || null,
+    canvasData: t.canvasData || null,
+    specialType: t.specialType || 'image',
+    textContent: t.textContent || t.content || '',
+    headers: t.headers ? JSON.parse(JSON.stringify(t.headers)) : ['עמודה 1', 'עמודה 2', 'עמודה 3'],
+    gridData: t.gridData ? JSON.parse(JSON.stringify(t.gridData)) : [['', '', ''], ['', '', '']]
+  };
+}
+
 // Helper to resolve active week data proxy for weekly_archive tables
 function getWeeklyArchiveData(t) {
   if (!t) return t;
@@ -1731,43 +1757,20 @@ function getWeeklyArchiveData(t) {
   const wKey = formatDateISO(getSunday(targetWeekDate));
 
   if (!t.weeklyData[wKey]) {
-    // 1. For Checkboxes: preserve item titles, but reset completed checkmarks for the new week!
-    let newItems = [];
-    if (t.items && Array.isArray(t.items) && t.items.length > 0) {
-      newItems = t.items.map(item => ({
-        ...item,
-        completed: false,
-        checked: false
-      }));
-    } else {
-      newItems = [{ id: Date.now().toString(), text: '', completed: false, checked: false }];
-    }
-
-    // 2. Weekly scope for all properties (inherit initial images/drawings from table object if present)
-    t.weeklyData[wKey] = {
-      items: newItems,
-      images: (t.images && Array.isArray(t.images) && t.images.length > 0) ? JSON.parse(JSON.stringify(t.images)) : [],
-      activeImageIndex: (typeof t.activeImageIndex === 'number') ? t.activeImageIndex : 0,
-      imageData: t.imageData || null,
-      canvasData: t.canvasData || null,
-      specialType: t.specialType || 'image',
-      textContent: t.textContent || t.content || '',
-      headers: t.headers ? JSON.parse(JSON.stringify(t.headers)) : ['עמודה 1', 'עמודה 2', 'עמודה 3'],
-      gridData: t.gridData ? JSON.parse(JSON.stringify(t.gridData)) : [['', '', ''], ['', '', '']]
-    };
+    syncTableWeeklyData(t);
+  } else {
+    // If weeklyData exists, restore active week's properties onto t
+    const weekObj = t.weeklyData[wKey];
+    if (weekObj.items) t.items = weekObj.items;
+    if (weekObj.images) t.images = weekObj.images;
+    if (typeof weekObj.activeImageIndex === 'number') t.activeImageIndex = weekObj.activeImageIndex;
+    if (weekObj.imageData) t.imageData = weekObj.imageData;
+    if (weekObj.canvasData) t.canvasData = weekObj.canvasData;
+    if (weekObj.specialType) t.specialType = weekObj.specialType;
+    if (typeof weekObj.textContent === 'string') t.textContent = weekObj.textContent;
+    if (weekObj.headers) t.headers = weekObj.headers;
+    if (weekObj.gridData) t.gridData = weekObj.gridData;
   }
-
-  // Directly attach the active week's data onto t so t is ALWAYS a 100% plain, JSON-serializable JS object!
-  const weekObj = t.weeklyData[wKey];
-  t.items = weekObj.items;
-  t.images = weekObj.images;
-  t.activeImageIndex = weekObj.activeImageIndex;
-  t.imageData = weekObj.imageData;
-  t.canvasData = weekObj.canvasData;
-  t.specialType = weekObj.specialType;
-  t.textContent = weekObj.textContent;
-  t.headers = weekObj.headers;
-  t.gridData = weekObj.gridData;
 
   return t;
 }
