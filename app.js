@@ -2531,10 +2531,15 @@ function renderCheckboxTableBody(t, container) {
     textInput.dataset.itemId = item.id;
     textInput.addEventListener('input', () => {
       item.text = textInput.value;
+      const nowISO = new Date().toISOString();
+      t.updatedAt = nowISO;
       const rootT = tables.find(tbl => tbl.id === t.id);
-      if (rootT && rootT.items) {
-        const rootItem = rootT.items.find(i => i.id === item.id);
-        if (rootItem) rootItem.text = textInput.value;
+      if (rootT) {
+        rootT.updatedAt = nowISO;
+        if (rootT.items) {
+          const rootItem = rootT.items.find(i => i.id === item.id);
+          if (rootItem) rootItem.text = textInput.value;
+        }
       }
       saveStateToLocalStorage();
       saveDataToCloud();
@@ -4746,31 +4751,28 @@ function mergeTablesSmart(cloudTables, localTables, deletedIds) {
     } else {
       const existingLocal = tableMap.get(ct.id);
 
-      // Merge items for checkboxes
-      if (ct.type === 'checkboxes' && Array.isArray(ct.items)) {
-        const itemMap = new Map();
-        (existingLocal.items || []).forEach(item => itemMap.set(item.id, item));
-        ct.items.forEach(item => itemMap.set(item.id, item));
-        existingLocal.items = Array.from(itemMap.values());
-      }
+      const localTime = new Date(existingLocal.updatedAt || 0).getTime();
+      const cloudTime = new Date(ct.updatedAt || 0).getTime();
 
-      // Merge customGrid (rows & columns)
-      if (ct.type === 'customGrid' && Array.isArray(ct.gridData)) {
-        const localGridHasData = existingLocal.gridData && existingLocal.gridData.some(r => Array.isArray(r) && r.some(c => c && String(c).trim() !== ''));
-        const cloudGridHasData = ct.gridData.some(r => Array.isArray(r) && r.some(c => c && String(c).trim() !== ''));
-        if (cloudGridHasData || !localGridHasData) {
-          existingLocal.gridData = ct.gridData;
+      // If local table is newer or equal, preserve local table content!
+      if (localTime >= cloudTime) {
+        if (ct.weeklyData) {
+          existingLocal.weeklyData = {
+            ...ct.weeklyData,
+            ...(existingLocal.weeklyData || {})
+          };
         }
+        tableMap.set(ct.id, existingLocal);
+      } else {
+        const mergedCloud = JSON.parse(JSON.stringify(ct));
+        if (mergedCloud.weeklyData && existingLocal.weeklyData) {
+          mergedCloud.weeklyData = {
+            ...existingLocal.weeklyData,
+            ...mergedCloud.weeklyData
+          };
+        }
+        tableMap.set(ct.id, mergedCloud);
       }
-
-      if (ct.weeklyData) {
-        existingLocal.weeklyData = {
-          ...(existingLocal.weeklyData || {}),
-          ...ct.weeklyData
-        };
-      }
-
-      tableMap.set(ct.id, existingLocal);
     }
   });
 
