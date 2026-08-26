@@ -301,38 +301,51 @@ function loadBackupFromLocalStorage() {
     events = [];
     deletedTables = [];
 
-    // 2. Try loading user-specific backup key if logged in
-    let backupStr = null;
+    // 2. Load candidate backups
+    let userBackupObj = null;
     if (currentUser && currentUser.email) {
       const key = getUserStorageKey(currentUser.email);
-      backupStr = key ? localStorage.getItem(key) : null;
+      const str = key ? localStorage.getItem(key) : null;
+      if (str) {
+        try { userBackupObj = JSON.parse(str); } catch (e) {}
+      }
     }
 
-    // 3. Fallback to general local backup key
-    if (!backupStr) {
-      backupStr = localStorage.getItem('allmylifeishere_board_backup');
+    let generalBackupObj = null;
+    const genStr = localStorage.getItem('allmylifeishere_board_backup');
+    if (genStr) {
+      try { generalBackupObj = JSON.parse(genStr); } catch (e) {}
     }
 
-    if (backupStr) {
-      const backup = JSON.parse(backupStr);
-      if (backup) {
-        if (backup.tables && Array.isArray(backup.tables)) {
-          tables = backup.tables;
-        }
-        if (backup.events && Array.isArray(backup.events)) {
-          events = backup.events;
-        }
-        if (backup.deletedTables && Array.isArray(backup.deletedTables)) {
-          deletedTables = backup.deletedTables;
-        }
-        if (backup.permanentlyDeletedIds && Array.isArray(backup.permanentlyDeletedIds)) {
-          backup.permanentlyDeletedIds.forEach(id => {
-            if (!permanentlyDeletedIds.includes(id)) permanentlyDeletedIds.push(id);
-          });
-        }
-        if (backup.subCategoriesByTab && typeof backup.subCategoriesByTab === 'object') {
-          subCategoriesByTab = { ...subCategoriesByTab, ...backup.subCategoriesByTab };
-        }
+    // Pick whichever backup contains data (prefer the one with more tables if both exist)
+    let backup = userBackupObj;
+    if (!backup) {
+      backup = generalBackupObj;
+    } else if (generalBackupObj && generalBackupObj.tables && Array.isArray(generalBackupObj.tables)) {
+      const userCount = (userBackupObj && userBackupObj.tables) ? userBackupObj.tables.length : 0;
+      const genCount = generalBackupObj.tables.length;
+      if (genCount > userCount) {
+        backup = generalBackupObj;
+      }
+    }
+
+    if (backup) {
+      if (backup.tables && Array.isArray(backup.tables)) {
+        tables = backup.tables;
+      }
+      if (backup.events && Array.isArray(backup.events)) {
+        events = backup.events;
+      }
+      if (backup.deletedTables && Array.isArray(backup.deletedTables)) {
+        deletedTables = backup.deletedTables;
+      }
+      if (backup.permanentlyDeletedIds && Array.isArray(backup.permanentlyDeletedIds)) {
+        backup.permanentlyDeletedIds.forEach(id => {
+          if (!permanentlyDeletedIds.includes(id)) permanentlyDeletedIds.push(id);
+        });
+      }
+      if (backup.subCategoriesByTab && typeof backup.subCategoriesByTab === 'object') {
+        subCategoriesByTab = { ...subCategoriesByTab, ...backup.subCategoriesByTab };
       }
     }
   } catch (e) {
