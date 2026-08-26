@@ -4057,11 +4057,6 @@ function initCloudSync() {
       }
     } else {
       db = firebase.firestore();
-      try {
-        db.settings({ experimentalForceLongPolling: true });
-      } catch (e) {
-        console.warn('Long polling setting notice:', e);
-      }
       if (firebase.storage) storage = firebase.storage();
     }
 
@@ -4773,28 +4768,65 @@ function mergeTablesSmart(cloudTables, localTables, deletedIds) {
     } else {
       const existingLocal = tableMap.get(ct.id);
 
-      const localTime = new Date(existingLocal.updatedAt || 0).getTime();
-      const cloudTime = new Date(ct.updatedAt || 0).getTime();
-
-      // If local table is newer or equal, preserve local table content!
-      if (localTime >= cloudTime) {
-        if (ct.weeklyData) {
-          existingLocal.weeklyData = {
-            ...ct.weeklyData,
-            ...(existingLocal.weeklyData || {})
-          };
-        }
-        tableMap.set(ct.id, existingLocal);
-      } else {
-        const mergedCloud = JSON.parse(JSON.stringify(ct));
-        if (mergedCloud.weeklyData && existingLocal.weeklyData) {
-          mergedCloud.weeklyData = {
-            ...existingLocal.weeklyData,
-            ...mergedCloud.weeklyData
-          };
-        }
-        tableMap.set(ct.id, mergedCloud);
+      // Deep Item & Data Merge for Checkboxes
+      if (ct.type === 'checkboxes' && Array.isArray(ct.items)) {
+        const itemMap = new Map();
+        // Add cloud items first
+        ct.items.forEach(ci => {
+          if (ci && ci.id) itemMap.set(ci.id, { ...ci });
+        });
+        // Override with local items if local item exists or has text
+        (existingLocal.items || []).forEach(li => {
+          if (li && li.id) {
+            const existingCloudItem = itemMap.get(li.id);
+            if (!existingCloudItem || (li.text && li.text.trim() !== '')) {
+              itemMap.set(li.id, { ...existingCloudItem, ...li });
+            }
+          }
+        });
+        existingLocal.items = Array.from(itemMap.values());
       }
+
+      // Deep Data Merge for Custom Grid
+      if (ct.type === 'customGrid' && Array.isArray(ct.gridData)) {
+        if (!existingLocal.gridData || !Array.isArray(existingLocal.gridData)) {
+          existingLocal.gridData = ct.gridData;
+        } else {
+          // Merge cell by cell: prefer non-empty cell value
+          ct.gridData.forEach((row, rIdx) => {
+            if (!existingLocal.gridData[rIdx]) existingLocal.gridData[rIdx] = [];
+            if (Array.isArray(row)) {
+              row.forEach((cellVal, cIdx) => {
+                const localVal = existingLocal.gridData[rIdx][cIdx];
+                if ((!localVal || String(localVal).trim() === '') && cellVal && String(cellVal).trim() !== '') {
+                  existingLocal.gridData[rIdx][cIdx] = cellVal;
+                }
+              });
+            }
+          });
+        }
+      }
+
+      // Deep Data Merge for Free Text
+      if (ct.type === 'freeText') {
+        const localText = existingLocal.textContent || '';
+        const cloudText = ct.textContent || '';
+        if (localText.trim() !== '') {
+          existingLocal.textContent = localText;
+        } else {
+          existingLocal.textContent = cloudText;
+        }
+      }
+
+      // Merge weeklyData
+      if (ct.weeklyData) {
+        existingLocal.weeklyData = {
+          ...ct.weeklyData,
+          ...(existingLocal.weeklyData || {})
+        };
+      }
+
+      tableMap.set(ct.id, existingLocal);
     }
   });
 
