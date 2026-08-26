@@ -661,6 +661,22 @@ function initApp() {
       return;
     }
 
+    // Click + הוספת טבלה button
+    const btnTable = e.target.closest('#createTableBtn') || e.target.closest('.create-table-btn');
+    if (btnTable) {
+      e.preventDefault();
+      openTableModal();
+      return;
+    }
+
+    // Click + הוספת אירוע button
+    const btnEv = e.target.closest('#createEventBottomBtn') || e.target.closest('#createEventBtn');
+    if (btnEv) {
+      e.preventDefault();
+      openModal();
+      return;
+    }
+
     // Click Main Tab button
     const tabBtn = e.target.closest('.tab-btn');
     if (tabBtn) {
@@ -1401,13 +1417,22 @@ function handleSubCategoryFormSubmit(e) {
 }
 
 function openTableModal(tableToEdit = null) {
+  const elModal = document.getElementById('tableModal') || tableModal;
+  const elTitle = document.getElementById('tableTitle') || tableTitleInput;
+  const elResetFreq = document.getElementById('tableResetFrequency') || tableResetFrequencyInput;
+  const elToday = document.getElementById('tableTodayInput') || tableTodayInput;
+  const elCompact = document.getElementById('tableCompactInput') || tableCompactInput;
+  const elModalTitle = document.querySelector('#tableModal h2') || tableModalTitle;
+  const elRows = document.getElementById('gridRowsInput') || gridRowsInput;
+  const elCols = document.getElementById('gridColsInput') || gridColsInput;
+
   if (tableToEdit && tableToEdit.id) {
     editingTableId = tableToEdit.id;
-    if (tableModalTitle) tableModalTitle.textContent = 'עריכת טבלה';
-    tableTitleInput.value = tableToEdit.title;
-    tableResetFrequencyInput.value = tableToEdit.resetFrequency || 'permanent';
-    tableTodayInput.checked = !!tableToEdit.isToday;
-    if (tableCompactInput) tableCompactInput.checked = !!tableToEdit.isCompact;
+    if (elModalTitle) elModalTitle.textContent = 'עריכת טבלה';
+    if (elTitle) elTitle.value = tableToEdit.title;
+    if (elResetFreq) elResetFreq.value = tableToEdit.resetFrequency || 'permanent';
+    if (elToday) elToday.checked = !!tableToEdit.isToday;
+    if (elCompact) elCompact.checked = !!tableToEdit.isCompact;
     populateTableSubCategorySelect(tableToEdit.subCategory || '');
 
     // Check category checkboxes
@@ -1421,11 +1446,11 @@ function openTableModal(tableToEdit = null) {
     updateGridDimensionsVisibility();
   } else {
     editingTableId = null;
-    if (tableModalTitle) tableModalTitle.textContent = 'יצירת טבלה חדשה';
-    tableTitleInput.value = '';
-    tableResetFrequencyInput.value = 'permanent';
-    tableTodayInput.checked = false;
-    if (tableCompactInput) tableCompactInput.checked = false;
+    if (elModalTitle) elModalTitle.textContent = 'יצירת טבלה חדשה';
+    if (elTitle) elTitle.value = '';
+    if (elResetFreq) elResetFreq.value = 'permanent';
+    if (elToday) elToday.checked = false;
+    if (elCompact) elCompact.checked = false;
     populateTableSubCategorySelect(currentSubCategory !== 'all' ? currentSubCategory : '');
     
     // Auto check category checkbox matching currentTab (default to 'life')
@@ -1437,20 +1462,27 @@ function openTableModal(tableToEdit = null) {
     const firstType = document.querySelector('input[name="tableType"][value="checkboxes"]');
     if (firstType) firstType.checked = true;
     updateGridDimensionsVisibility();
-    gridRowsInput.value = 3;
-    gridColsInput.value = 3;
+    if (elRows) elRows.value = 3;
+    if (elCols) elCols.value = 3;
   }
 
-  tableModal.classList.remove('hidden');
-  tableModal.setAttribute('aria-hidden', 'false');
-  tableTitleInput.focus();
+  if (elModal) {
+    elModal.classList.remove('hidden');
+    elModal.setAttribute('aria-hidden', 'false');
+  }
+  if (elTitle) setTimeout(() => elTitle.focus(), 50);
 }
 
 function closeTableModal() {
-  tableModal.classList.add('hidden');
-  tableModal.setAttribute('aria-hidden', 'true');
+  const elModal = document.getElementById('tableModal') || tableModal;
+  const elForm = document.getElementById('tableForm') || tableForm;
+
+  if (elModal) {
+    elModal.classList.add('hidden');
+    elModal.setAttribute('aria-hidden', 'true');
+  }
   editingTableId = null;
-  tableForm.reset();
+  if (elForm) elForm.reset();
 }
 
 function handleTableFormSubmit(e) {
