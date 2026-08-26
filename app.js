@@ -575,6 +575,19 @@ function initScheduleToggle() {
 
 // Initialize
 function initApp() {
+  // Always load saved sub-categories from LocalStorage on startup
+  try {
+    const standaloneSubCats = localStorage.getItem('allmylifeishere_sub_categories');
+    if (standaloneSubCats) {
+      const parsedSubCats = JSON.parse(standaloneSubCats);
+      if (parsedSubCats && typeof parsedSubCats === 'object') {
+        subCategoriesByTab = { ...subCategoriesByTab, ...parsedSubCats };
+      }
+    }
+  } catch (e) {
+    console.warn('Sub-categories load notice:', e);
+  }
+
   const savedUserStr = localStorage.getItem('allmylifeishere_user') || getCookie('allmylifeishere_user');
   if (savedUserStr) {
     try {
@@ -1397,9 +1410,17 @@ function populateTableSubCategorySelect(selectedSubCat = '') {
   if (!select) return;
 
   select.innerHTML = '<option value="">-- ללא תת-קטגוריה --</option>';
-  const currentList = subCategoriesByTab[currentTab] || [];
 
-  currentList.forEach(sc => {
+  const allSubCats = new Set();
+  Object.values(subCategoriesByTab).forEach(list => {
+    if (Array.isArray(list)) {
+      list.forEach(sc => {
+        if (sc && sc.trim()) allSubCats.add(sc.trim());
+      });
+    }
+  });
+
+  allSubCats.forEach(sc => {
     const opt = document.createElement('option');
     opt.value = sc;
     opt.textContent = sc;
