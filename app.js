@@ -7,6 +7,14 @@ let permanentlyDeletedIds = []; // Registry of permanently deleted table IDs to 
 let editingEventId = null;
 let editingTableId = null;
 let currentTab = 'all'; // Single active tab: 'all' | 'today' | 'life' | 'work' | 'fun'
+let subCategoriesByTab = {
+  all: [],
+  today: [],
+  life: [],
+  work: [],
+  fun: []
+};
+let currentSubCategory = 'all';
 let googleIcalUrl = localStorage.getItem('allmylifeishere_google_ical_url') || '';
 let googleEvents = [];
 let activeGoogleEvent = null;
@@ -226,7 +234,7 @@ function saveStateToLocalStorage() {
     if (!currentUser || !currentUser.email) return;
     const key = getUserStorageKey(currentUser.email);
     if (key) {
-      localStorage.setItem(key, JSON.stringify({ tables, events, deletedTables, permanentlyDeletedIds }));
+      localStorage.setItem(key, JSON.stringify({ tables, events, deletedTables, permanentlyDeletedIds, subCategoriesByTab }));
     }
     saveVaultSnapshot();
   } catch (e) {
@@ -244,7 +252,8 @@ function saveVaultSnapshot() {
       tables: JSON.parse(JSON.stringify(tables)),
       events: JSON.parse(JSON.stringify(events)),
       deletedTables: JSON.parse(JSON.stringify(deletedTables)),
-      permanentlyDeletedIds: JSON.parse(JSON.stringify(permanentlyDeletedIds))
+      permanentlyDeletedIds: JSON.parse(JSON.stringify(permanentlyDeletedIds)),
+      subCategoriesByTab: JSON.parse(JSON.stringify(subCategoriesByTab))
     };
     if (vault.length > 0 && JSON.stringify(vault[0].tables) === JSON.stringify(newSnapshot.tables)) return;
     vault.unshift(newSnapshot);
@@ -291,6 +300,9 @@ function loadBackupFromLocalStorage() {
           backup.permanentlyDeletedIds.forEach(id => {
             if (!permanentlyDeletedIds.includes(id)) permanentlyDeletedIds.push(id);
           });
+        }
+        if (backup.subCategoriesByTab && typeof backup.subCategoriesByTab === 'object') {
+          subCategoriesByTab = backup.subCategoriesByTab;
         }
       }
     }
@@ -1197,6 +1209,93 @@ function updateGridDimensionsVisibility() {
   }
 }
 
+function renderSubCategoriesBar() {
+  const subCatStrip = document.getElementById('subCatStrip');
+  if (!subCatStrip) return;
+
+  const activeTables = tables.filter(t => !t.isArchived && !permanentlyDeletedIds.includes(t.id));
+  const currentList = subCategoriesByTab[currentTab] || [];
+  let html = '';
+
+  const isAllActive = (currentSubCategory === 'all') ? 'active' : '';
+  html += `<button type="button" class="sub-cat-pill ${isAllActive}" data-subcat="all">הכל</button>`;
+
+  currentList.forEach(subCat => {
+    const isActive = (currentSubCategory === subCat) ? 'active' : '';
+    const count = activeTables.filter(t => {
+      const matchesTab = (currentTab === 'all') ? true : (t.categories && t.categories.includes(currentTab));
+      return matchesTab && t.subCategory === subCat;
+    }).length;
+
+    html += `
+      <button type="button" class="sub-cat-pill ${isActive}" data-subcat="${escapeHtml(subCat)}">
+        <span>${escapeHtml(subCat)}</span>
+        <span class="sub-cat-count">${count}</span>
+        <span class="delete-subcat-x" data-delete-subcat="${escapeHtml(subCat)}" title="מחיקת תת-קטגוריה">&times;</span>
+      </button>`;
+  });
+
+  subCatStrip.innerHTML = html;
+}
+
+function openSubCategoryModal() {
+  const subCategoryModal = document.getElementById('subCategoryModal');
+  const subCategoryNameInput = document.getElementById('subCategoryNameInput');
+  const subCatModalTitle = document.getElementById('subCatModalTitle');
+  if (!subCategoryModal || !subCategoryNameInput) return;
+
+  const catNames = { life: 'חיים', work: 'עבודה/פרויקטים', fun: 'כיף', today: 'היום', all: 'הכל' };
+  if (subCatModalTitle) {
+    subCatModalTitle.textContent = `יצירת תת-קטגוריה חדשה בלשונית (${catNames[currentTab] || currentTab})`;
+  }
+
+  subCategoryNameInput.value = '';
+  subCategoryModal.classList.remove('hidden');
+  subCategoryNameInput.focus();
+}
+
+function closeSubCategoryModal() {
+  const subCategoryModal = document.getElementById('subCategoryModal');
+  if (subCategoryModal) subCategoryModal.classList.add('hidden');
+}
+
+function handleSubCategoryFormSubmit(e) {
+  e.preventDefault();
+  const subCategoryNameInput = document.getElementById('subCategoryNameInput');
+  if (!subCategoryNameInput) return;
+
+  const newName = subCategoryNameInput.value.trim();
+  if (!newName) return;
+
+  saveStateToHistory();
+  if (!subCategoriesByTab[currentTab]) subCategoriesByTab[currentTab] = [];
+  if (!subCategoriesByTab[currentTab].includes(newName)) {
+    subCategoriesByTab[currentTab].push(newName);
+  }
+
+  currentSubCategory = newName;
+  closeSubCategoryModal();
+  saveStateToLocalStorage();
+  if (typeof saveDataToCloud === 'function') saveDataToCloud();
+  renderFilteredTables();
+}
+
+function populateTableSubCategorySelect(selectedSubCat = '') {
+  const select = document.getElementById('tableSubCategorySelect');
+  if (!select) return;
+
+  select.innerHTML = '<option value="">-- ללא תת-קטגוריה --</option>';
+  const currentList = subCategoriesByTab[currentTab] || [];
+
+  currentList.forEach(sc => {
+    const opt = document.createElement('option');
+    opt.value = sc;
+    opt.textContent = sc;
+    if (sc === selectedSubCat) opt.selected = true;
+    select.appendChild(opt);
+  });
+}
+
 function openTableModal(tableToEdit = null) {
   if (tableToEdit && tableToEdit.id) {
     editingTableId = tableToEdit.id;
@@ -1205,6 +1304,7 @@ function openTableModal(tableToEdit = null) {
     tableResetFrequencyInput.value = tableToEdit.resetFrequency || 'permanent';
     tableTodayInput.checked = !!tableToEdit.isToday;
     if (tableCompactInput) tableCompactInput.checked = !!tableToEdit.isCompact;
+    populateTableSubCategorySelect(tableToEdit.subCategory || '');
 
     // Check category checkboxes
     document.querySelectorAll('input[name="tableCategories"]').forEach(cb => {
@@ -1222,6 +1322,7 @@ function openTableModal(tableToEdit = null) {
     tableResetFrequencyInput.value = 'permanent';
     tableTodayInput.checked = false;
     if (tableCompactInput) tableCompactInput.checked = false;
+    populateTableSubCategorySelect(currentSubCategory !== 'all' ? currentSubCategory : '');
     
     // Auto check category checkbox matching currentTab (default to 'life')
     const targetCat = ['life', 'work', 'fun'].includes(currentTab) ? currentTab : 'life';
@@ -1263,6 +1364,7 @@ function handleTableFormSubmit(e) {
 
   const isToday = tableTodayInput.checked;
   const isCompact = tableCompactInput ? tableCompactInput.checked : false;
+  const subCategory = document.getElementById('tableSubCategorySelect')?.value || '';
 
   let newTableCreatedId = null;
 
@@ -1275,6 +1377,7 @@ function handleTableFormSubmit(e) {
           title,
           resetFrequency,
           categories,
+          subCategory,
           isToday,
           isCompact
         };
@@ -1321,6 +1424,7 @@ function handleTableFormSubmit(e) {
       type,
       resetFrequency,
       categories,
+      subCategory,
       isToday,
       isCompact,
       createdAt: formatDateISO(new Date()),
@@ -1516,6 +1620,13 @@ function renderFilteredTables() {
     filteredTbls = activeTables.filter(t => !t.categories || t.categories.length === 0 || t.categories.includes(currentTab));
   }
 
+  // 3. Filter by Sub-Category if selected
+  if (currentSubCategory && currentSubCategory !== 'all') {
+    filteredTbls = filteredTbls.filter(t => t.subCategory === currentSubCategory);
+  }
+
+  renderSubCategoriesBar();
+
   // Set Header Title & Count
   const tabTitles = {
     all: 'כל התכנים והאירועים',
@@ -1535,12 +1646,12 @@ function renderFilteredTables() {
 
   if (totalCount === 0) {
     const hintMsg = (tables.length > 0)
-      ? `קיימות <strong>${tables.length} טבלאות</strong> בלשוניות אחרות. לחץ על <strong>"הכל"</strong> בסרגל העליון כדי לראות אותן!`
+      ? `קיימות <strong>${tables.length} טבלאות</strong> בלשוניות או בתת-קטגוריות אחרות. לחץ על <strong>"הכל"</strong> בסרגל העליון כדי לראות אותן!`
       : 'לחץ על <strong>"+ הוספת טבלה"</strong> כדי ליצור תוכן חדש!';
 
     filteredTablesList.innerHTML = `
       <div class="empty-list-state">
-        <p>אין תכנים או אירועים בלשונית זו (${categoryNames[currentTab] || currentTab}).</p>
+        <p>אין תכנים או אירועים בלשונית זו (${categoryNames[currentTab] || currentTab}${currentSubCategory !== 'all' ? ` - ${escapeHtml(currentSubCategory)}` : ''}).</p>
         <p style="margin-top: 0.5rem; font-size: 0.9rem; color: #a5b4fc;">${hintMsg}</p>
       </div>`;
     return;
@@ -1591,7 +1702,8 @@ function renderFilteredTables() {
       }
     });
 
-    const badgesHtml = t.categories.map(cat => `<span class="cat-badge cat-${cat}">${categoryNames[cat]}</span>`).join(' ');
+    const subCatBadgeHtml = t.subCategory ? `<span class="cat-badge" style="background:rgba(99,102,241,0.25); color:#a5b4fc; border:1px solid rgba(99,102,241,0.4);">📁 ${escapeHtml(t.subCategory)}</span>` : '';
+    const badgesHtml = t.categories.map(cat => `<span class="cat-badge cat-${cat}">${categoryNames[cat]}</span>`).join(' ') + ' ' + subCatBadgeHtml;
     const resetBadgeHtml = `<span class="reset-badge">${resetLabels[t.resetFrequency || 'weekly_archive']}</span>`;
     const isTodayActive = t.isToday ? 'active' : '';
 
@@ -4275,6 +4387,7 @@ function saveDataToCloudDirect() {
       events: events,
       deletedTables: deletedTables,
       permanentlyDeletedIds: permanentlyDeletedIds,
+      subCategoriesByTab: subCategoriesByTab,
       completedTasksHistory: (typeof completedTasksHistory !== 'undefined' && Array.isArray(completedTasksHistory)) ? completedTasksHistory : [],
       updatedAt: timestamp,
       lastDeviceId: myDeviceId
@@ -4555,6 +4668,10 @@ function subscribeToCloudUpdates() {
 
     if (data.completedTasksHistory && typeof completedTasksHistory !== 'undefined') {
       completedTasksHistory = data.completedTasksHistory;
+    }
+
+    if (data.subCategoriesByTab && typeof data.subCategoriesByTab === 'object') {
+      subCategoriesByTab = data.subCategoriesByTab;
     }
 
     saveStateToLocalStorage();
