@@ -634,6 +634,22 @@ document.addEventListener('DOMContentLoaded', () => {
     if (addSubCatBtn) {
       e.preventDefault();
       openSubCategoryModal();
+      return;
+    }
+
+    // Click Main Tab button
+    const tabBtn = e.target.closest('.tab-btn');
+    if (tabBtn) {
+      e.preventDefault();
+      const tab = tabBtn.dataset.tab;
+      if (tab) {
+        currentTab = tab;
+        currentSubCategory = 'all';
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        tabBtn.classList.add('active');
+        renderFilteredTables();
+      }
+      return;
     }
   });
 
@@ -1683,6 +1699,10 @@ function renderFilteredTables() {
 
   renderSubCategoriesBar();
 
+  const elTitle = document.getElementById('filteredListTitle') || filteredListTitle;
+  const elCount = document.getElementById('filteredListCount') || filteredListCount;
+  const elList = document.getElementById('filteredTablesList') || filteredTablesList;
+
   // Set Header Title & Count
   const tabTitles = {
     all: 'כל התכנים והאירועים',
@@ -1693,12 +1713,13 @@ function renderFilteredTables() {
   };
 
   const categoryNames = { life: 'חיים', work: 'עבודה/פרויקטים', fun: 'כיף' };
-  filteredListTitle.textContent = tabTitles[currentTab] || 'תכנים';
+  if (elTitle) elTitle.textContent = tabTitles[currentTab] || 'תכנים';
 
   const totalCount = filteredTbls.length + filteredEvs.length;
-  filteredListCount.textContent = `${totalCount} פריטים`;
+  if (elCount) elCount.textContent = `${totalCount} פריטים`;
 
-  filteredTablesList.innerHTML = '';
+  if (!elList) return;
+  elList.innerHTML = '';
 
   if (totalCount === 0) {
     const hintMsg = (currentSubCategory !== 'all')
@@ -1707,7 +1728,7 @@ function renderFilteredTables() {
         ? `קיימות <strong>${tables.length} טבלאות</strong> בלשוניות אחרות. לחץ על <strong>"הכל"</strong> בסרגל העליון כדי לראות אותן!`
         : 'לחץ על <strong>"+ הוספת טבלה"</strong> כדי ליצור תוכן חדש!';
 
-    filteredTablesList.innerHTML = `
+    elList.innerHTML = `
       <div class="empty-list-state">
         <p>אין תכנים או אירועים בלשונית זו (${categoryNames[currentTab] || currentTab}${currentSubCategory !== 'all' ? ` - ${escapeHtml(currentSubCategory)}` : ''}).</p>
         <p style="margin-top: 0.5rem; font-size: 0.9rem; color: #a5b4fc;">${hintMsg}</p>
@@ -1881,7 +1902,7 @@ function renderFilteredTables() {
       renderSpecialTableBody(activeTableObj, bodyContainer);
     }
 
-    filteredTablesList.appendChild(card);
+    elList.appendChild(card);
   });
 
   // Render Events
@@ -1889,7 +1910,7 @@ function renderFilteredTables() {
     const eventsHeading = document.createElement('h4');
     eventsHeading.className = 'section-subheading';
     eventsHeading.textContent = '📅 אירועים';
-    filteredTablesList.appendChild(eventsHeading);
+    elList.appendChild(eventsHeading);
 
     filteredEvs.forEach(ev => {
       const isRecurring = ev.recurrence && ev.recurrence !== 'none';
@@ -1914,7 +1935,7 @@ function renderFilteredTables() {
       `;
 
       item.addEventListener('click', () => openModal(ev));
-      filteredTablesList.appendChild(item);
+      elList.appendChild(item);
     });
   }
 
@@ -2136,11 +2157,11 @@ function renderDeletedTablesArchiveCard() {
     archiveWrapper.appendChild(listCard);
   }
 
-  const bottomSection = document.querySelector('.bottom-section') || document.querySelector('.schedule-wrapper');
+  const targetList = document.getElementById('filteredTablesList') || filteredTablesList;
   if (bottomSection) {
     bottomSection.appendChild(archiveWrapper);
-  } else if (filteredTablesList) {
-    filteredTablesList.appendChild(archiveWrapper);
+  } else if (targetList) {
+    targetList.appendChild(archiveWrapper);
   }
 }
 
@@ -2291,7 +2312,10 @@ function renderCompletedTasksLogCard() {
     });
   }
 
-  filteredTablesList.appendChild(logCard);
+  const targetList = document.getElementById('filteredTablesList') || filteredTablesList;
+  if (targetList) {
+    targetList.appendChild(logCard);
+  }
 }
 
 // Render Type 1: Checkbox List with Drag & Drop and Up/Down Reordering
