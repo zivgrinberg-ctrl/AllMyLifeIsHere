@@ -4576,10 +4576,21 @@ function restoreFromFirestoreSanitization(obj) {
   return obj;
 }
 
+let isCloudWriteInProgress = false;
+let hasPendingCloudWrite = false;
+
 function saveDataToCloudDirect() {
   clearTimeout(cloudSaveTimeout);
   saveStateToLocalStorage();
   if (!db || isReceivingCloudUpdate || !currentSyncKey) return;
+
+  if (isCloudWriteInProgress) {
+    hasPendingCloudWrite = true;
+    return;
+  }
+
+  isCloudWriteInProgress = true;
+  hasPendingCloudWrite = false;
 
   updateSyncStatusBadge('uploading');
   try {
@@ -4600,10 +4611,20 @@ function saveDataToCloudDirect() {
     db.collection('boards').doc(currentSyncKey).set(boardDoc, { merge: true })
       .then(() => {
         updateSyncStatusBadge('synced');
+        isCloudWriteInProgress = false;
+        if (hasPendingCloudWrite) {
+          hasPendingCloudWrite = false;
+          saveDataToCloudDirect();
+        }
       })
       .catch(err => {
         console.warn('Firestore save warning:', err);
         updateSyncStatusBadge('local');
+        isCloudWriteInProgress = false;
+        if (hasPendingCloudWrite) {
+          hasPendingCloudWrite = false;
+          setTimeout(saveDataToCloudDirect, 1500);
+        }
       });
 
     tables.forEach(t => {
@@ -4620,6 +4641,7 @@ function saveDataToCloudDirect() {
     });
   } catch (err) {
     console.warn('Direct cloud save error:', err);
+    isCloudWriteInProgress = false;
   }
 }
 
@@ -4630,7 +4652,7 @@ function saveDataToCloud() {
   clearTimeout(cloudSaveTimeout);
   cloudSaveTimeout = setTimeout(() => {
     saveDataToCloudDirect();
-  }, 250);
+  }, 1000);
 }
 
 // 100% Background Heartbeat Auto-Saver (Every 5 seconds)
