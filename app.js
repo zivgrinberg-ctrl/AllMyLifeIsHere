@@ -1395,6 +1395,9 @@ function handleSubCategoryFormSubmit(e) {
   if (typeof saveDataToCloud === 'function') saveDataToCloud();
   closeSubCategoryModal();
   renderFilteredTables();
+  if (typeof showToast === 'function') {
+    showToast(`✨ תת-הקטגוריה "${newName}" נוצרה בהצלחה!`);
+  }
 }
 
 function openTableModal(tableToEdit = null) {
