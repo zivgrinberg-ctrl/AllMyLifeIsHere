@@ -231,13 +231,11 @@ function getUserStorageKey(email) {
 
 function saveStateToLocalStorage() {
   try {
-    const email = (currentUser && currentUser.email) ? currentUser.email : 'local@user.com';
-    const key = getUserStorageKey(email);
-    const payload = JSON.stringify({ tables, events, deletedTables, permanentlyDeletedIds, subCategoriesByTab });
+    if (!currentUser || !currentUser.email) return;
+    const key = getUserStorageKey(currentUser.email);
     if (key) {
-      localStorage.setItem(key, payload);
+      localStorage.setItem(key, JSON.stringify({ tables, events, deletedTables, permanentlyDeletedIds, subCategoriesByTab }));
     }
-    localStorage.setItem('allmylifeishere_board_backup', payload);
     saveVaultSnapshot();
   } catch (e) {
     console.warn('LocalStorage save backup notice:', e);
@@ -245,7 +243,7 @@ function saveStateToLocalStorage() {
 }
 
 function saveVaultSnapshot() {
-  if (tables.length === 0 && events.length === 0) return;
+  if (!currentUser || !currentUser.email || (tables.length === 0 && events.length === 0)) return;
   try {
     const vaultStr = localStorage.getItem('allmylifeishere_history_vault');
     let vault = vaultStr ? JSON.parse(vaultStr) : [];
@@ -272,10 +270,12 @@ function loadBackupFromLocalStorage() {
     events = [];
     deletedTables = [];
 
-    const email = (currentUser && currentUser.email) ? currentUser.email : 'local@user.com';
-    const key = getUserStorageKey(email);
+    if (!currentUser || !currentUser.email) return;
+
+    const key = getUserStorageKey(currentUser.email);
     let backupStr = key ? localStorage.getItem(key) : null;
-    if (!backupStr) {
+    const userEmailClean = currentUser.email.toLowerCase();
+    if (!backupStr && (userEmailClean.includes('ziv') || userEmailClean.includes('admin') || userEmailClean.includes('user'))) {
       backupStr = localStorage.getItem('allmylifeishere_board_backup');
       if (backupStr && key) {
         localStorage.setItem(key, backupStr);
@@ -551,8 +551,14 @@ document.addEventListener('DOMContentLoaded', () => {
   if (currentUser && currentUser.email) {
     const rawKey = currentUser.email.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
     currentSyncKey = 'USER-' + rawKey;
+    loadBackupFromLocalStorage();
+  } else {
+    currentUser = null;
+    currentSyncKey = null;
+    tables = [];
+    events = [];
+    deletedTables = [];
   }
-  loadBackupFromLocalStorage();
 
   populateDateDropdowns();
   populateTimeDropdowns();
@@ -619,13 +625,9 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Navigation Event Listeners
-  prevWeekBtn.addEventListener('click', () => {
-    changeWeek(-7);
-  });
-  nextWeekBtn.addEventListener('click', () => {
-    changeWeek(7);
-  });
-  todayBtn.addEventListener('click', () => {
+  if (prevWeekBtn) prevWeekBtn.addEventListener('click', () => changeWeek(-7));
+  if (nextWeekBtn) nextWeekBtn.addEventListener('click', () => changeWeek(7));
+  if (todayBtn) todayBtn.addEventListener('click', () => {
     currentWeekStart = getSunday(new Date());
     updateView();
     scrollToSixAM();
@@ -637,24 +639,27 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Table Modal Listeners
-  createTableBtn.addEventListener('click', () => openTableModal());
+  if (createTableBtn) createTableBtn.addEventListener('click', () => openTableModal());
   if (createEventBottomBtn) createEventBottomBtn.addEventListener('click', () => openModal());
-  closeTableModalBtn.addEventListener('click', closeTableModal);
-  cancelTableBtn.addEventListener('click', closeTableModal);
-  tableModal.addEventListener('click', (e) => {
-    if (e.target === tableModal) closeTableModal();
-  });
-  tableForm.addEventListener('submit', handleTableFormSubmit);
+  if (closeTableModalBtn) closeTableModalBtn.addEventListener('click', closeTableModal);
+  if (cancelTableBtn) cancelTableBtn.addEventListener('click', closeTableModal);
+  if (tableModal) {
+    tableModal.addEventListener('click', (e) => {
+      if (e.target === tableModal) closeTableModal();
+    });
+  }
+  if (tableForm) tableForm.addEventListener('submit', handleTableFormSubmit);
 
-  // Single-Select Unified 5-Tabs Listener
-  tabButtons.forEach(btn => {
+  // Single-Select Unified 5-Tabs Listener (Live DOM Query)
+  const liveTabButtons = document.querySelectorAll('.tab-btn');
+  liveTabButtons.forEach(btn => {
     btn.addEventListener('click', () => {
       const tab = btn.dataset.tab;
       if (!tab) return;
       currentTab = tab;
       currentSubCategory = 'all';
 
-      tabButtons.forEach(b => b.classList.remove('active'));
+      liveTabButtons.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
 
       renderFilteredTables();
