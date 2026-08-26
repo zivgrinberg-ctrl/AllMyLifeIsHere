@@ -550,8 +550,75 @@ function initScheduleToggle() {
   updateScheduleToggleUI();
 }
 
-// Initialize
-document.addEventListener('DOMContentLoaded', () => {
+// Helper to update active tab styling visually
+function updateTabButtonsUI() {
+  const allTabBtns = document.querySelectorAll('.tab-btn');
+  allTabBtns.forEach(btn => {
+    if (btn.dataset.tab === currentTab) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+}
+
+// Global click delegation for main tabs & sub-categories
+document.addEventListener('click', (e) => {
+  // Delete sub-category x click
+  const deleteX = e.target.closest('[data-delete-subcat]');
+  if (deleteX) {
+    e.preventDefault();
+    e.stopPropagation();
+    const subCatName = deleteX.dataset.deleteSubcat;
+    if (subCatName && confirm(`האם למחוק את תת-הקטגוריה "${subCatName}"?`)) {
+      saveStateToHistory();
+      if (!subCategoriesByTab[currentTab]) subCategoriesByTab[currentTab] = [];
+      subCategoriesByTab[currentTab] = subCategoriesByTab[currentTab].filter(sc => sc !== subCatName);
+      if (currentSubCategory === subCatName) currentSubCategory = 'all';
+      saveStateToLocalStorage();
+      if (typeof saveDataToCloud === 'function') saveDataToCloud();
+      renderFilteredTables();
+    }
+    return;
+  }
+
+  // Click sub-category pill
+  const pillBtn = e.target.closest('.sub-cat-pill');
+  if (pillBtn && !e.target.classList.contains('delete-subcat-x')) {
+    e.preventDefault();
+    const subCat = pillBtn.dataset.subcat;
+    if (subCat) {
+      currentSubCategory = subCat;
+      renderFilteredTables();
+    }
+    return;
+  }
+
+  // Click + תת-קטגוריה button
+  const addSubCatBtn = e.target.closest('#addSubCatHeaderBtn') || e.target.closest('.add-subcat-btn');
+  if (addSubCatBtn) {
+    e.preventDefault();
+    openSubCategoryModal();
+    return;
+  }
+
+  // Click Main Tab button
+  const tabBtn = e.target.closest('.tab-btn');
+  if (tabBtn) {
+    e.preventDefault();
+    const tab = tabBtn.dataset.tab;
+    if (tab) {
+      currentTab = tab;
+      currentSubCategory = 'all';
+      updateTabButtonsUI();
+      renderFilteredTables();
+    }
+    return;
+  }
+});
+
+// Main App Initialization
+function initApp() {
   const savedUserStr = localStorage.getItem('allmylifeishere_user') || getCookie('allmylifeishere_user');
   if (savedUserStr) {
     try {
@@ -597,62 +664,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Global click delegation for sub-category bar & pills
-  document.addEventListener('click', (e) => {
-    // Delete sub-category x click
-    const deleteX = e.target.closest('[data-delete-subcat]');
-    if (deleteX) {
-      e.preventDefault();
-      e.stopPropagation();
-      const subCatName = deleteX.dataset.deleteSubcat;
-      if (subCatName && confirm(`האם למחוק את תת-הקטגוריה "${subCatName}"?`)) {
-        saveStateToHistory();
-        if (!subCategoriesByTab[currentTab]) subCategoriesByTab[currentTab] = [];
-        subCategoriesByTab[currentTab] = subCategoriesByTab[currentTab].filter(sc => sc !== subCatName);
-        if (currentSubCategory === subCatName) currentSubCategory = 'all';
-        saveStateToLocalStorage();
-        if (typeof saveDataToCloud === 'function') saveDataToCloud();
-        renderFilteredTables();
-      }
-      return;
-    }
-
-    // Click sub-category pill
-    const pillBtn = e.target.closest('.sub-cat-pill');
-    if (pillBtn && !e.target.classList.contains('delete-subcat-x')) {
-      e.preventDefault();
-      const subCat = pillBtn.dataset.subcat;
-      if (subCat) {
-        currentSubCategory = subCat;
-        renderFilteredTables();
-      }
-      return;
-    }
-
-    // Click + תת-קטגוריה button
-    const addSubCatBtn = e.target.closest('#addSubCatHeaderBtn') || e.target.closest('.add-subcat-btn');
-    if (addSubCatBtn) {
-      e.preventDefault();
-      openSubCategoryModal();
-      return;
-    }
-
-    // Click Main Tab button
-    const tabBtn = e.target.closest('.tab-btn');
-    if (tabBtn) {
-      e.preventDefault();
-      const tab = tabBtn.dataset.tab;
-      if (tab) {
-        currentTab = tab;
-        currentSubCategory = 'all';
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        tabBtn.classList.add('active');
-        renderFilteredTables();
-      }
-      return;
-    }
-  });
-
   // Navigation Event Listeners
   if (prevWeekBtn) prevWeekBtn.addEventListener('click', () => changeWeek(-7));
   if (nextWeekBtn) nextWeekBtn.addEventListener('click', () => changeWeek(7));
@@ -679,53 +690,49 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   if (tableForm) tableForm.addEventListener('submit', handleTableFormSubmit);
 
-  // Single-Select Unified 5-Tabs Listener (Live DOM Query)
-  const liveTabButtons = document.querySelectorAll('.tab-btn');
-  liveTabButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const tab = btn.dataset.tab;
-      if (!tab) return;
-      currentTab = tab;
-      currentSubCategory = 'all';
-
-      liveTabButtons.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-
-      renderFilteredTables();
-    });
-  });
-
   // Modal Event Listeners
-  createEventBtn.addEventListener('click', () => openModal());
-  googleSyncBtn.addEventListener('click', handleGlobalGoogleSync);
-  syncSingleGoogleBtn.addEventListener('click', handleSingleEventGoogleSync);
-  closeModalBtn.addEventListener('click', closeModal);
-  cancelEventBtn.addEventListener('click', closeModal);
-  deleteEventBtn.addEventListener('click', handleDeleteEvent);
-  duplicateEventBtn.addEventListener('click', handleDuplicateEvent);
-  eventModal.addEventListener('click', (e) => {
-    if (e.target === eventModal) closeModal();
-  });
+  if (createEventBtn) createEventBtn.addEventListener('click', () => openModal());
+  if (googleSyncBtn) googleSyncBtn.addEventListener('click', handleGlobalGoogleSync);
+  if (syncSingleGoogleBtn) syncSingleGoogleBtn.addEventListener('click', handleSingleEventGoogleSync);
+  if (closeModalBtn) closeModalBtn.addEventListener('click', closeModal);
+  if (cancelEventBtn) cancelEventBtn.addEventListener('click', closeModal);
+  if (deleteEventBtn) deleteEventBtn.addEventListener('click', handleDeleteEvent);
+  if (duplicateEventBtn) duplicateEventBtn.addEventListener('click', handleDuplicateEvent);
+  if (eventModal) {
+    eventModal.addEventListener('click', (e) => {
+      if (e.target === eventModal) closeModal();
+    });
+  }
 
   // Always sync End Date default to match Start Date automatically
-  eventDateInput.addEventListener('change', () => {
-    eventEndDateInput.value = eventDateInput.value;
-  });
+  if (eventDateInput) {
+    eventDateInput.addEventListener('change', () => {
+      if (eventEndDateInput) eventEndDateInput.value = eventDateInput.value;
+    });
+  }
 
   // Auto adjust end time when start time changes
-  eventStartTimeInput.addEventListener('change', () => {
-    const startMin = parseTimeToMinutes(eventStartTimeInput.value);
-    const endMin = parseTimeToMinutes(eventEndTimeInput.value);
-    if (endMin <= startMin && eventDateInput.value === eventEndDateInput.value) {
-      const newEndMin = startMin + 60; // default 1 hour duration
-      const h = Math.min(Math.floor(newEndMin / 60), 23);
-      const m = newEndMin % 60;
-      eventEndTimeInput.value = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    }
-  });
+  if (eventStartTimeInput) {
+    eventStartTimeInput.addEventListener('change', () => {
+      const startMin = parseTimeToMinutes(eventStartTimeInput.value);
+      const endMin = parseTimeToMinutes(eventEndTimeInput.value);
+      if (endMin <= startMin && eventDateInput.value === eventEndDateInput.value) {
+        const newEndMin = startMin + 60; // default 1 hour duration
+        const h = Math.min(Math.floor(newEndMin / 60), 23);
+        const m = newEndMin % 60;
+        if (eventEndTimeInput) eventEndTimeInput.value = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      }
+    });
+  }
 
-  eventForm.addEventListener('submit', handleFormSubmit);
-});
+  if (eventForm) eventForm.addEventListener('submit', handleFormSubmit);
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}
 
 // Format date object to label format "13/8/26 ה'"
 function formatDateOptionLabel(dateObj) {
