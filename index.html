@@ -182,16 +182,6 @@
               <span>כיף</span>
             </button>
           </div>
-
-          <!-- Per-Tab Sub-Categories Bar -->
-          <div id="subCategoriesBar" class="sub-categories-filter-bar">
-            <div id="subCatStrip" class="sub-cat-strip">
-              <!-- Dynamic sub-category pills rendered here -->
-            </div>
-            <button type="button" id="addSubCatHeaderBtn" class="btn btn-sm btn-outline-subcat">
-              + תת-קטגוריה
-            </button>
-          </div>
         </div>
 
         <!-- Filtered Content & Tables Card -->
@@ -307,11 +297,6 @@
                 <input type="checkbox" id="tableTodayInput">
                 <span>📌 להכניס ל- "היום"</span>
               </label>
-            <div class="form-group" style="margin-top: 0.8rem;">
-              <label for="tableSubCategorySelect">תת-קטגוריה</label>
-              <select id="tableSubCategorySelect" class="form-select">
-                <option value="">-- ללא תת-קטגוריה --</option>
-              </select>
             </div>
             <div class="form-group">
               <label class="today-toggle-label compact-toggle-form-label">
@@ -581,26 +566,6 @@
       </div>
     </div>
 
-    <!-- Dedicated Sub-Category Creation Modal -->
-    <div id="subCategoryModal" class="modal-overlay hidden" aria-hidden="true">
-      <div class="modal-card" style="max-width: 400px;">
-        <div class="modal-header">
-          <h2 id="subCatModalTitle">יצירת תת-קטגוריה חדשה</h2>
-          <button type="button" id="closeSubCatModalBtn" class="btn-close">&times;</button>
-        </div>
-        <form id="subCategoryForm" class="modal-body">
-          <div class="form-group">
-            <label for="subCategoryNameInput">שם תת-הקטגוריה</label>
-            <input type="text" id="subCategoryNameInput" required placeholder="הכנס שם תת-קטגוריה..." autocomplete="off" class="form-input">
-          </div>
-          <div class="modal-footer" style="margin-top: 1rem;">
-            <button type="button" id="cancelSubCatBtn" class="btn btn-secondary">ביטול</button>
-            <button type="submit" class="btn btn-primary">צור תת-קטגוריה</button>
-          </div>
-        </form>
-      </div>
-    </div>
-
     <!-- Undo Toast Notification -->
     <div id="undoToast" class="undo-toast">
       <span>↩️</span>
@@ -612,6 +577,6 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js" onerror="console.warn('Firebase Auth CDN omitted')"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js" onerror="console.warn('Firebase Firestore CDN omitted')"></script>
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" onerror="console.warn('heic2any converter CDN omitted')"></script>
-    <script src="app.js?v=20260826_v51"></script>
+    <script src="app.js?v=20260825_v41"></script>
 </body>
 </html>
