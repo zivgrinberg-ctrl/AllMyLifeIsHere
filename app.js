@@ -648,6 +648,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const tab = btn.dataset.tab;
       if (!tab) return;
       currentTab = tab;
+      currentSubCategory = 'all';
 
       tabButtons.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
@@ -1693,6 +1694,13 @@ function renderFilteredTables() {
   } else {
     filteredTbls = activeTables.filter(t => !t.categories || t.categories.length === 0 || t.categories.includes(currentTab));
   }
+
+  // 3. Filter by Sub-Category if selected
+  if (currentSubCategory && currentSubCategory !== 'all') {
+    filteredTbls = filteredTbls.filter(t => t.subCategory === currentSubCategory);
+  }
+
+  renderSubCategoriesBar();
 
   // Set Header Title & Count
   const tabTitles = {
