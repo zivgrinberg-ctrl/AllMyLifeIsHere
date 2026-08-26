@@ -242,12 +242,15 @@ function getUserStorageKey(email) {
 
 function saveStateToLocalStorage() {
   try {
+    const payloadStr = JSON.stringify({ tables, events, deletedTables, permanentlyDeletedIds, subCategoriesByTab });
     localStorage.setItem('allmylifeishere_sub_categories', JSON.stringify(subCategoriesByTab));
+    localStorage.setItem('allmylifeishere_board_backup', payloadStr);
 
-    if (!currentUser || !currentUser.email) return;
-    const key = getUserStorageKey(currentUser.email);
-    if (key) {
-      localStorage.setItem(key, JSON.stringify({ tables, events, deletedTables, permanentlyDeletedIds, subCategoriesByTab }));
+    if (currentUser && currentUser.email) {
+      const key = getUserStorageKey(currentUser.email);
+      if (key) {
+        localStorage.setItem(key, payloadStr);
+      }
     }
     saveVaultSnapshot();
   } catch (e) {
@@ -279,7 +282,7 @@ function saveVaultSnapshot() {
 
 function loadBackupFromLocalStorage() {
   try {
-    // Always load standalone subCategoriesByTab backup first
+    // 1. Always load standalone sub-categories first
     const standaloneSubCats = localStorage.getItem('allmylifeishere_sub_categories');
     if (standaloneSubCats) {
       const parsedSubCats = JSON.parse(standaloneSubCats);
@@ -292,18 +295,16 @@ function loadBackupFromLocalStorage() {
     events = [];
     deletedTables = [];
 
-    if (!currentUser || !currentUser.email) return;
+    // 2. Try loading user-specific backup key if logged in
+    let backupStr = null;
+    if (currentUser && currentUser.email) {
+      const key = getUserStorageKey(currentUser.email);
+      backupStr = key ? localStorage.getItem(key) : null;
+    }
 
-    const key = getUserStorageKey(currentUser.email);
-    let backupStr = key ? localStorage.getItem(key) : null;
-
-    // Only migrate legacy backup if the user email is primary account
-    const userEmailClean = currentUser.email.toLowerCase();
-    if (!backupStr && (userEmailClean.includes('ziv') || userEmailClean.includes('admin'))) {
+    // 3. Fallback to general local backup key
+    if (!backupStr) {
       backupStr = localStorage.getItem('allmylifeishere_board_backup');
-      if (backupStr && key) {
-        localStorage.setItem(key, backupStr);
-      }
     }
 
     if (backupStr) {
@@ -600,14 +601,13 @@ function initApp() {
   if (currentUser && currentUser.email) {
     const rawKey = currentUser.email.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
     currentSyncKey = 'USER-' + rawKey;
-    loadBackupFromLocalStorage();
   } else {
     currentUser = null;
     currentSyncKey = null;
-    tables = [];
-    events = [];
-    deletedTables = [];
   }
+
+  // Always load all tables, events, and sub-categories from LocalStorage on startup
+  loadBackupFromLocalStorage();
 
   populateDateDropdowns();
   populateTimeDropdowns();
