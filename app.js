@@ -546,6 +546,18 @@ function updateScheduleToggleUI() {
   }
 }
 
+function updateGridDimensionsVisibility() {
+  const selectedType = document.querySelector('input[name="tableType"]:checked')?.value;
+  const elGroup = document.getElementById('gridDimensionsGroup') || (typeof gridDimensionsGroup !== 'undefined' ? gridDimensionsGroup : null);
+  if (elGroup) {
+    if (selectedType === 'customGrid') {
+      elGroup.classList.remove('hidden');
+    } else {
+      elGroup.classList.add('hidden');
+    }
+  }
+}
+
 function initScheduleToggle() {
   const scheduleToggleBtn = document.getElementById('scheduleToggleBtn');
   if (scheduleToggleBtn) {
@@ -1466,7 +1478,7 @@ function openTableModal(tableToEdit = null) {
     // Select type radio
     const typeRadio = document.querySelector(`input[name="tableType"][value="${tableToEdit.type}"]`);
     if (typeRadio) typeRadio.checked = true;
-    updateGridDimensionsVisibility();
+    if (typeof updateGridDimensionsVisibility === 'function') updateGridDimensionsVisibility();
   } else {
     editingTableId = null;
     if (elModalTitle) elModalTitle.textContent = 'יצירת טבלה חדשה';
@@ -1484,7 +1496,7 @@ function openTableModal(tableToEdit = null) {
 
     const firstType = document.querySelector('input[name="tableType"][value="checkboxes"]');
     if (firstType) firstType.checked = true;
-    updateGridDimensionsVisibility();
+    if (typeof updateGridDimensionsVisibility === 'function') updateGridDimensionsVisibility();
     if (elRows) elRows.value = 3;
     if (elCols) elCols.value = 3;
   }
