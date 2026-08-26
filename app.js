@@ -1,3 +1,14 @@
+// Utility: Safe HTML Escaping
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 // State
 let currentWeekStart = getSunday(new Date());
 let events = []; // STRICT: Empty initial state with zero dummy data
