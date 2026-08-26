@@ -242,6 +242,8 @@ function getUserStorageKey(email) {
 
 function saveStateToLocalStorage() {
   try {
+    localStorage.setItem('allmylifeishere_sub_categories', JSON.stringify(subCategoriesByTab));
+
     if (!currentUser || !currentUser.email) return;
     const key = getUserStorageKey(currentUser.email);
     if (key) {
@@ -277,6 +279,15 @@ function saveVaultSnapshot() {
 
 function loadBackupFromLocalStorage() {
   try {
+    // Always load standalone subCategoriesByTab backup first
+    const standaloneSubCats = localStorage.getItem('allmylifeishere_sub_categories');
+    if (standaloneSubCats) {
+      const parsedSubCats = JSON.parse(standaloneSubCats);
+      if (parsedSubCats && typeof parsedSubCats === 'object') {
+        subCategoriesByTab = { ...subCategoriesByTab, ...parsedSubCats };
+      }
+    }
+
     tables = [];
     events = [];
     deletedTables = [];
@@ -313,7 +324,7 @@ function loadBackupFromLocalStorage() {
           });
         }
         if (backup.subCategoriesByTab && typeof backup.subCategoriesByTab === 'object') {
-          subCategoriesByTab = backup.subCategoriesByTab;
+          subCategoriesByTab = { ...subCategoriesByTab, ...backup.subCategoriesByTab };
         }
       }
     }
@@ -1321,6 +1332,18 @@ function handleDeleteEvent() {
   renderGridRows();
   renderFilteredTables();
   closeModal();
+}
+
+function updateGridDimensionsVisibility() {
+  const selectedType = document.querySelector('input[name="tableType"]:checked')?.value;
+  const elGroup = document.getElementById('gridDimensionsGroup') || gridDimensionsGroup;
+  if (elGroup) {
+    if (selectedType === 'customGrid') {
+      elGroup.classList.remove('hidden');
+    } else {
+      elGroup.classList.add('hidden');
+    }
+  }
 }
 
 // Sub-Categories Logic
