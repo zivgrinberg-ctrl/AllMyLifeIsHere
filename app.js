@@ -4614,6 +4614,7 @@ function saveDataToCloudDirect() {
       events: events,
       deletedTables: deletedTables,
       permanentlyDeletedIds: permanentlyDeletedIds,
+      subCategoriesByTab: subCategoriesByTab,
       completedTasksHistory: (typeof completedTasksHistory !== 'undefined' && Array.isArray(completedTasksHistory)) ? completedTasksHistory : [],
       updatedAt: timestamp,
       lastDeviceId: myDeviceId
@@ -4939,6 +4940,25 @@ function subscribeToCloudUpdates() {
 
     if (data.completedTasksHistory && typeof completedTasksHistory !== 'undefined') {
       completedTasksHistory = data.completedTasksHistory;
+    }
+
+    if (data.subCategoriesByTab && typeof data.subCategoriesByTab === 'object') {
+      let subCatChanged = false;
+      Object.keys(data.subCategoriesByTab).forEach(tabKey => {
+        if (!subCategoriesByTab[tabKey]) subCategoriesByTab[tabKey] = [];
+        const incomingList = data.subCategoriesByTab[tabKey];
+        if (Array.isArray(incomingList)) {
+          incomingList.forEach(sc => {
+            if (sc && !subCategoriesByTab[tabKey].includes(sc)) {
+              subCategoriesByTab[tabKey].push(sc);
+              subCatChanged = true;
+            }
+          });
+        }
+      });
+      if (subCatChanged) {
+        renderSubCategoriesBar();
+      }
     }
 
     saveStateToLocalStorage();
