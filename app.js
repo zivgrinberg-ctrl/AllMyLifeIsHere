@@ -2133,7 +2133,6 @@ function renderFilteredTables() {
   });
 
   // Render Week's Events Card dynamically matching currently viewed week (currentWeekStart)
-  const targetWeekDate = (typeof currentWeekStart !== 'undefined' && currentWeekStart) ? currentWeekStart : new Date();
   const weekRangeTitle = getWeekRangeString(targetWeekDate);
   const catNames = { life: 'חיים', work: 'עבודה', fun: 'כיף' };
   const catSuffix = (currentTab && ['life', 'work', 'fun'].includes(currentTab)) ? ` (${catNames[currentTab]})` : '';
