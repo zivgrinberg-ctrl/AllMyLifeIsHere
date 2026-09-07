@@ -1779,6 +1779,28 @@ function syncTableWeeklyData(t) {
   };
 }
 
+// Master input sync helper for table edits (isolated per active week)
+function syncTableDataToStorage(t) {
+  if (!t || !t.id) return;
+  const nowISO = new Date().toISOString();
+  t.updatedAt = nowISO;
+  const rootT = tables.find(tbl => tbl.id === t.id);
+  if (rootT) {
+    rootT.updatedAt = nowISO;
+    if (rootT.resetFrequency === 'permanent') {
+      rootT.items = t.items;
+      rootT.gridData = t.gridData;
+      rootT.textContent = t.textContent;
+    } else {
+      if (typeof syncTableWeeklyData === 'function') {
+        syncTableWeeklyData(rootT);
+      }
+    }
+  }
+  saveStateToLocalStorage();
+  saveDataToCloud();
+}
+
 // Helper to resolve active week data proxy for weekly tables
 function getWeeklyArchiveData(t) {
   if (!t) return t;
@@ -1794,6 +1816,8 @@ function getWeeklyArchiveData(t) {
 
   if (!t.weeklyData[wKey]) {
     // Initialize a fresh, clean table state for this new week!
+
+    // 1. Checkboxes: reset checkmarks for new week items
     let newItems = [];
     if (t.items && Array.isArray(t.items) && t.items.length > 0) {
       newItems = t.items.map(item => ({
@@ -1806,10 +1830,24 @@ function getWeeklyArchiveData(t) {
       newItems = [{ id: 'item_' + Math.random().toString(36).substr(2, 9), text: '', completed: false, checked: false }];
     }
 
-    let newGrid = [['', '', ''], ['', '', '']];
-    if (t.headers && Array.isArray(t.headers)) {
-      const colCount = t.headers.length;
-      newGrid = Array.from({ length: 2 }, () => Array(colCount).fill(''));
+    // 2. Custom Grid: Preserve ONLY Row 0 (Header Row), reset all subsequent rows to blank!
+    let newGrid = [];
+    if (t.gridData && Array.isArray(t.gridData) && t.gridData.length > 0) {
+      newGrid = t.gridData.map((row, rIdx) => {
+        if (rIdx === 0) {
+          // Row 0 is preserved as column header / title row across weeks!
+          return Array.isArray(row) ? [...row] : [];
+        } else {
+          // All other rows (Row 1, Row 2...) are cleared for the new week!
+          return Array.isArray(row) ? Array(row.length).fill('') : [];
+        }
+      });
+    } else {
+      const colCount = (t.headers && Array.isArray(t.headers)) ? t.headers.length : 3;
+      newGrid = [
+        Array(colCount).fill(''), // Row 0
+        Array(colCount).fill('')  // Row 1
+      ];
     }
 
     t.weeklyData[wKey] = {
@@ -2634,18 +2672,12 @@ function renderCheckboxTableBody(t, container) {
     textInput.dataset.itemId = item.id;
     textInput.addEventListener('input', () => {
       item.text = textInput.value;
-      const nowISO = new Date().toISOString();
-      t.updatedAt = nowISO;
-      const rootT = tables.find(tbl => tbl.id === t.id);
-      if (rootT) {
-        rootT.updatedAt = nowISO;
-        if (rootT.items) {
-          const rootItem = rootT.items.find(i => i.id === item.id);
-          if (rootItem) rootItem.text = textInput.value;
-        }
+      if (typeof syncTableDataToStorage === 'function') {
+        syncTableDataToStorage(t);
+      } else {
+        saveStateToLocalStorage();
+        saveDataToCloud();
       }
-      saveStateToLocalStorage();
-      saveDataToCloud();
     });
 
     textInput.addEventListener('change', () => {
@@ -2772,21 +2804,13 @@ function renderCheckboxTableBody(t, container) {
 
 // Render Type 2: Custom Grid Table (Columns & Rows Matrix)
 function syncCustomGridData(t) {
-  const rootT = tables.find(tbl => tbl.id === t.id);
-  if (rootT) {
-    rootT.gridData = JSON.parse(JSON.stringify(t.gridData));
-    if (rootT.weeklyData) {
-      const targetWeekDate = (typeof currentWeekStart !== 'undefined' && currentWeekStart) ? currentWeekStart : new Date();
-      const wKey = formatDateISO(getSunday(targetWeekDate));
-      if (rootT.weeklyData[wKey]) {
-        rootT.weeklyData[wKey].gridData = JSON.parse(JSON.stringify(t.gridData));
-      }
-    }
+  if (typeof syncTableDataToStorage === 'function') {
+    syncTableDataToStorage(t);
+  } else {
+    saveStateToHistory();
+    saveStateToLocalStorage();
+    saveDataToCloud();
   }
-  t.gridData = JSON.parse(JSON.stringify(t.gridData));
-  saveStateToHistory();
-  saveStateToLocalStorage();
-  saveDataToCloud();
 }
 
 function renderCustomGridTableBody(t, container) {
@@ -2916,12 +2940,12 @@ function renderCustomGridTableBody(t, container) {
         adjustHeight();
         if (!t.gridData[rIdx]) t.gridData[rIdx] = [];
         t.gridData[rIdx][cIdx] = textarea.value;
-        const rootT = tables.find(tbl => tbl.id === t.id);
-        if (rootT && rootT.gridData && rootT.gridData[rIdx]) {
-          rootT.gridData[rIdx][cIdx] = textarea.value;
+        if (typeof syncTableDataToStorage === 'function') {
+          syncTableDataToStorage(t);
+        } else {
+          saveStateToLocalStorage();
+          saveDataToCloud();
         }
-        saveStateToLocalStorage();
-        saveDataToCloud();
       });
 
       // Smart multi-cell clipboard paste
@@ -3090,10 +3114,12 @@ function renderFreeTextTableBody(t, container) {
   textarea.value = t.textContent || '';
   textarea.addEventListener('input', () => {
     t.textContent = textarea.value;
-    const rootT = tables.find(tbl => tbl.id === t.id);
-    if (rootT) rootT.textContent = textarea.value;
-    saveStateToLocalStorage();
-    saveDataToCloud();
+    if (typeof syncTableDataToStorage === 'function') {
+      syncTableDataToStorage(t);
+    } else {
+      saveStateToLocalStorage();
+      saveDataToCloud();
+    }
   });
   textarea.addEventListener('change', () => {
     saveStateToHistory();
