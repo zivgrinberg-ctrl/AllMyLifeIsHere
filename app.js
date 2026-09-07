@@ -924,6 +924,23 @@ function getEventBoundsForDate(ev, targetDateISO) {
   };
 }
 
+// Helper: Check if an event falls anywhere in a given week
+function isEventInWeek(ev, weekStartDate) {
+  if (!ev || !ev.date) return false;
+  const sundayISO = formatDateISO(getSunday(weekStartDate));
+  const base = new Date(sundayISO + 'T00:00:00');
+
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(base);
+    d.setDate(base.getDate() + i);
+    const dateISO = formatDateISO(d);
+    if (getEventBoundsForDate(ev, dateISO) !== null) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Scroll grid body directly to 06:00 AM (like Google Calendar)
 function scrollToSixAM() {
   requestAnimationFrame(() => {
@@ -1744,6 +1761,7 @@ function getWeekRangeString(startDate) {
 // Helper to keep active week's data synchronized with root table object
 function syncTableWeeklyData(t) {
   if (!t) return;
+  if (t.resetFrequency === 'permanent') return; // Permanent tables stay constant across all weeks
   if (!t.weeklyData) t.weeklyData = {};
   const targetWeekDate = (typeof currentWeekStart !== 'undefined' && currentWeekStart) ? currentWeekStart : new Date();
   const wKey = formatDateISO(getSunday(targetWeekDate));
@@ -1761,29 +1779,63 @@ function syncTableWeeklyData(t) {
   };
 }
 
-// Helper to resolve active week data proxy for weekly_archive tables
+// Helper to resolve active week data proxy for weekly tables
 function getWeeklyArchiveData(t) {
   if (!t) return t;
+
+  // Permanent tables stay constant across all weeks!
+  if (t.resetFrequency === 'permanent') {
+    return t;
+  }
 
   if (!t.weeklyData) t.weeklyData = {};
   const targetWeekDate = (typeof currentWeekStart !== 'undefined' && currentWeekStart) ? currentWeekStart : new Date();
   const wKey = formatDateISO(getSunday(targetWeekDate));
 
   if (!t.weeklyData[wKey]) {
-    syncTableWeeklyData(t);
-  } else {
-    // If weeklyData exists, restore active week's properties onto t
-    const weekObj = t.weeklyData[wKey];
-    if (weekObj.items) t.items = weekObj.items;
-    if (weekObj.images) t.images = weekObj.images;
-    if (typeof weekObj.activeImageIndex === 'number') t.activeImageIndex = weekObj.activeImageIndex;
-    if (weekObj.imageData) t.imageData = weekObj.imageData;
-    if (weekObj.canvasData) t.canvasData = weekObj.canvasData;
-    if (weekObj.specialType) t.specialType = weekObj.specialType;
-    if (typeof weekObj.textContent === 'string') t.textContent = weekObj.textContent;
-    if (weekObj.headers) t.headers = weekObj.headers;
-    if (weekObj.gridData) t.gridData = weekObj.gridData;
+    // Initialize a fresh, clean table state for this new week!
+    let newItems = [];
+    if (t.items && Array.isArray(t.items) && t.items.length > 0) {
+      newItems = t.items.map(item => ({
+        id: 'item_' + Math.random().toString(36).substr(2, 9),
+        text: item.text || '',
+        completed: false,
+        checked: false
+      }));
+    } else {
+      newItems = [{ id: 'item_' + Math.random().toString(36).substr(2, 9), text: '', completed: false, checked: false }];
+    }
+
+    let newGrid = [['', '', ''], ['', '', '']];
+    if (t.headers && Array.isArray(t.headers)) {
+      const colCount = t.headers.length;
+      newGrid = Array.from({ length: 2 }, () => Array(colCount).fill(''));
+    }
+
+    t.weeklyData[wKey] = {
+      items: newItems,
+      images: [],
+      activeImageIndex: 0,
+      imageData: null,
+      canvasData: null,
+      specialType: t.specialType || 'image',
+      textContent: '',
+      headers: t.headers ? JSON.parse(JSON.stringify(t.headers)) : ['עמודה 1', 'עמודה 2', 'עמודה 3'],
+      gridData: newGrid
+    };
   }
+
+  // Restore the active week's properties onto t
+  const weekObj = t.weeklyData[wKey];
+  if (weekObj.items) t.items = weekObj.items;
+  if (weekObj.images) t.images = weekObj.images;
+  if (typeof weekObj.activeImageIndex === 'number') t.activeImageIndex = weekObj.activeImageIndex;
+  if (weekObj.imageData !== undefined) t.imageData = weekObj.imageData;
+  if (weekObj.canvasData !== undefined) t.canvasData = weekObj.canvasData;
+  if (weekObj.specialType) t.specialType = weekObj.specialType;
+  if (typeof weekObj.textContent === 'string') t.textContent = weekObj.textContent;
+  if (weekObj.headers) t.headers = weekObj.headers;
+  if (weekObj.gridData) t.gridData = weekObj.gridData;
 
   return t;
 }
@@ -1806,14 +1858,14 @@ function renderFilteredTables() {
   checkAndResetTables();
   const todayISO = formatDateISO(new Date());
 
-  // 1. Filter Events
+  // 1. Filter Events dynamically by the currently viewed week (currentWeekStart)
   let filteredEvs = [];
   if (currentTab === 'all') {
-    filteredEvs = [...events];
+    filteredEvs = events.filter(ev => isEventInWeek(ev, currentWeekStart));
   } else if (currentTab === 'today') {
     filteredEvs = events.filter(ev => getEventBoundsForDate(ev, todayISO) !== null);
   } else {
-    filteredEvs = events.filter(ev => ev.category === currentTab);
+    filteredEvs = events.filter(ev => ev.category === currentTab && isEventInWeek(ev, currentWeekStart));
   }
 
   // 2. Filter Active Tables (where isArchived is falsey and not permanently deleted)
@@ -2042,12 +2094,40 @@ function renderFilteredTables() {
     filteredTablesList.appendChild(card);
   });
 
-  // Render Events
-  if (filteredEvs.length > 0) {
-    const eventsHeading = document.createElement('h4');
-    eventsHeading.className = 'section-subheading';
-    eventsHeading.textContent = '📅 אירועים';
-    filteredTablesList.appendChild(eventsHeading);
+  // Render Week's Events Card dynamically matching currently viewed week (currentWeekStart)
+  const targetWeekDate = (typeof currentWeekStart !== 'undefined' && currentWeekStart) ? currentWeekStart : new Date();
+  const weekRangeTitle = getWeekRangeString(targetWeekDate);
+  const catNames = { life: 'חיים', work: 'עבודה', fun: 'כיף' };
+  const catSuffix = (currentTab && ['life', 'work', 'fun'].includes(currentTab)) ? ` (${catNames[currentTab]})` : '';
+  const eventsCardTitle = (currentTab === 'today')
+    ? `📅 אירועי היום (${todayISO})`
+    : `📅 אירועי השבוע הנצפה - ${weekRangeTitle}${catSuffix}`;
+
+  const eventsCard = document.createElement('div');
+  eventsCard.className = 'rendered-table-card events-week-card';
+  eventsCard.innerHTML = `
+    <div class="table-card-header">
+      <div class="table-card-title-group">
+        <span class="table-card-title">${eventsCardTitle}</span>
+        <span class="badge-count">${filteredEvs.length} אירועים</span>
+      </div>
+      <button type="button" class="btn btn-secondary btn-sm" id="addEventFromWeekCardBtn">+ הוספת אירוע</button>
+    </div>
+    <div class="table-card-body list-events-card-body"></div>
+  `;
+
+  const addEvBtn = eventsCard.querySelector('#addEventFromWeekCardBtn');
+  if (addEvBtn) {
+    addEvBtn.addEventListener('click', () => openModal());
+  }
+
+  const eventsBody = eventsCard.querySelector('.list-events-card-body');
+
+  if (filteredEvs.length === 0) {
+    eventsBody.innerHTML = `<div class="empty-list-state" style="padding: 1rem; text-align: center; color: var(--text-muted); font-size: 0.9rem;">✨ אין אירועים מתוכננים לשבוע זה (${weekRangeTitle}). בלחיצה על "+ הוספת אירוע" תוכל להוסיף אירוע חדש!</div>`;
+  } else {
+    // Sort events chronologically by date and start time
+    filteredEvs.sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
 
     filteredEvs.forEach(ev => {
       const isRecurring = ev.recurrence && ev.recurrence !== 'none';
@@ -2060,21 +2140,28 @@ function renderFilteredTables() {
 
       const item = document.createElement('div');
       item.className = `list-event-item ${categoryClass}`;
+      item.setAttribute('title', 'לחץ לצפייה ועריכת אירוע זה');
+      item.style.cursor = 'pointer';
       item.innerHTML = `
-        <div class="list-event-title">
-          <span>${ev.title}</span>
-          ${recurrenceIcon}
+        <div class="list-event-title" style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-weight: 600;">${ev.title}</span>
+          <div>
+            ${recurrenceIcon}
+            <span style="font-size: 0.75rem; opacity: 0.8; margin-right: 0.4rem;">✏️ עריכה</span>
+          </div>
         </div>
-        <div class="list-event-meta">
+        <div class="list-event-meta" style="margin-top: 0.3rem; font-size: 0.82rem; color: var(--text-muted); display: flex; gap: 1rem;">
           <span>📅 ${dateDisplay}</span>
           <span>⏰ ${ev.startTime} - ${ev.endTime}</span>
         </div>
       `;
 
       item.addEventListener('click', () => openModal(ev));
-      filteredTablesList.appendChild(item);
+      eventsBody.appendChild(item);
     });
   }
+
+  filteredTablesList.appendChild(eventsCard);
 
   // Append Completed Tasks Log and Deleted Tables Archive
   renderCompletedTasksLogCard();
