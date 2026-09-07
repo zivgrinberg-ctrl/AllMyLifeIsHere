@@ -1784,14 +1784,19 @@ function syncTableDataToStorage(t) {
   if (!t || !t.id) return;
   const nowISO = new Date().toISOString();
   t.updatedAt = nowISO;
+
   const rootT = tables.find(tbl => tbl.id === t.id);
   if (rootT) {
     rootT.updatedAt = nowISO;
-    if (rootT.resetFrequency === 'permanent') {
-      rootT.items = t.items;
-      rootT.gridData = t.gridData;
-      rootT.textContent = t.textContent;
-    } else {
+    if (t.items) rootT.items = t.items;
+    if (t.gridData) rootT.gridData = t.gridData;
+    if (t.textContent !== undefined) rootT.textContent = t.textContent;
+    if (t.images) rootT.images = t.images;
+    if (t.activeImageIndex !== undefined) rootT.activeImageIndex = t.activeImageIndex;
+    if (t.imageData !== undefined) rootT.imageData = t.imageData;
+    if (t.canvasData !== undefined) rootT.canvasData = t.canvasData;
+
+    if (rootT.resetFrequency !== 'permanent') {
       if (typeof syncTableWeeklyData === 'function') {
         syncTableWeeklyData(rootT);
       }
@@ -4788,15 +4793,15 @@ setInterval(() => {
 
 // Page exit / navigation auto-saver
 window.addEventListener('beforeunload', () => {
+  if (Array.isArray(tables)) {
+    tables.forEach(t => {
+      if (typeof syncTableWeeklyData === 'function') syncTableWeeklyData(t);
+    });
+  }
   saveStateToLocalStorage();
   if (db && currentSyncKey && !isReceivingCloudUpdate) {
     try {
-      const boardDoc = {
-        tables: JSON.parse(JSON.stringify(tables)),
-        events: JSON.parse(JSON.stringify(events)),
-        deletedTables: JSON.parse(JSON.stringify(deletedTables))
-      };
-      db.collection('boards').doc(currentSyncKey).set(boardDoc, { merge: true });
+      saveDataToCloudDirect();
     } catch (e) {}
   }
 });
