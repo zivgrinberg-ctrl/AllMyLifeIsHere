@@ -348,8 +348,85 @@ function loadBackupFromLocalStorage() {
         subCategoriesByTab = { ...subCategoriesByTab, ...backup.subCategoriesByTab };
       }
     }
+
+    // Recover max grid rows / items from history vault snapshots automatically
+    recoverMaxDataFromVaultAndCloud();
   } catch (e) {
     console.warn('LocalStorage backup load notice:', e);
+  }
+}
+
+function recoverMaxDataFromVaultAndCloud() {
+  try {
+    const vaultStr = localStorage.getItem('allmylifeishere_history_vault');
+    const genBackupStr = localStorage.getItem('allmylifeishere_board_backup');
+    let candidateTablesLists = [];
+
+    if (vaultStr) {
+      try {
+        const vault = JSON.parse(vaultStr);
+        if (Array.isArray(vault)) {
+          vault.forEach(snap => {
+            if (snap && Array.isArray(snap.tables)) candidateTablesLists.push(snap.tables);
+          });
+        }
+      } catch (e) {}
+    }
+
+    if (genBackupStr) {
+      try {
+        const genBackup = JSON.parse(genBackupStr);
+        if (genBackup && Array.isArray(genBackup.tables)) candidateTablesLists.push(genBackup.tables);
+      } catch (e) {}
+    }
+
+    let recoveredCount = 0;
+    tables.forEach(t => {
+      candidateTablesLists.forEach(cList => {
+        const cand = cList.find(ct => ct.id === t.id);
+        if (!cand) return;
+
+        // Restore customGrid rows if candidate has more rows
+        if (t.type === 'customGrid' && cand.gridData && Array.isArray(cand.gridData)) {
+          if (!t.gridData || cand.gridData.length > t.gridData.length) {
+            t.gridData = JSON.parse(JSON.stringify(cand.gridData));
+            t.rowsCount = cand.gridData.length;
+            recoveredCount++;
+          }
+        }
+
+        // Restore checkboxes items if candidate has more items
+        if (t.type === 'checkboxes' && cand.items && Array.isArray(cand.items)) {
+          if (!t.items || cand.items.length > t.items.length) {
+            t.items = JSON.parse(JSON.stringify(cand.items));
+            recoveredCount++;
+          }
+        }
+
+        // Merge weeklyData from candidates
+        if (cand.weeklyData && typeof cand.weeklyData === 'object') {
+          if (!t.weeklyData) t.weeklyData = {};
+          Object.keys(cand.weeklyData).forEach(wKey => {
+            const candW = cand.weeklyData[wKey];
+            const localW = t.weeklyData[wKey];
+            if (!localW) {
+              t.weeklyData[wKey] = JSON.parse(JSON.stringify(candW));
+              recoveredCount++;
+            } else if (candW.gridData && Array.isArray(candW.gridData) && localW.gridData && candW.gridData.length > localW.gridData.length) {
+              localW.gridData = JSON.parse(JSON.stringify(candW.gridData));
+              recoveredCount++;
+            }
+          });
+        }
+      });
+    });
+
+    if (recoveredCount > 0) {
+      saveStateToLocalStorage();
+      console.log(`✨ Successfully recovered ${recoveredCount} data elements from history vault!`);
+    }
+  } catch (err) {
+    console.warn('Vault recovery error:', err);
   }
 }
 
@@ -1525,6 +1602,12 @@ function openTableModal(tableToEdit = null) {
     if (elResetFreq) elResetFreq.value = tableToEdit.resetFrequency || 'permanent';
     if (elToday) elToday.checked = !!tableToEdit.isToday;
     if (elCompact) elCompact.checked = !!tableToEdit.isCompact;
+    if (elRows && tableToEdit.gridData && Array.isArray(tableToEdit.gridData)) {
+      elRows.value = tableToEdit.gridData.length;
+    }
+    if (elCols && tableToEdit.gridData && tableToEdit.gridData[0] && Array.isArray(tableToEdit.gridData[0])) {
+      elCols.value = tableToEdit.gridData[0].length;
+    }
     populateTableSubCategorySelect(tableToEdit.subCategory || '');
 
     // Check category checkboxes
@@ -1611,7 +1694,8 @@ function handleTableFormSubmit(e) {
         };
 
         if (t.type === 'customGrid') {
-          const targetRows = parseInt(gridRowsInput.value) || (t.gridData ? t.gridData.length : 3);
+          const currentRowsCount = (t.gridData && Array.isArray(t.gridData)) ? t.gridData.length : 3;
+          const targetRows = Math.max(currentRowsCount, parseInt(gridRowsInput.value) || currentRowsCount);
           const targetCols = parseInt(gridColsInput.value) || (t.gridData && t.gridData[0] ? t.gridData[0].length : 3);
           updated.rowsCount = targetRows;
           updated.colsCount = targetCols;
@@ -1621,13 +1705,9 @@ function handleTableFormSubmit(e) {
             const colsLen = (currentGrid[0] && currentGrid[0].length) ? currentGrid[0].length : targetCols;
             currentGrid.push(new Array(colsLen).fill(''));
           }
-          if (currentGrid.length > targetRows) {
-            currentGrid = currentGrid.slice(0, targetRows);
-          }
 
           currentGrid.forEach(row => {
             while (row.length < targetCols) row.push('');
-            if (row.length > targetCols) row.splice(targetCols);
           });
 
           updated.gridData = currentGrid;
